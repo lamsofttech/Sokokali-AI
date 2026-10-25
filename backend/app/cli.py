@@ -1,0 +1,45 @@
+"""Interactive terminal chat with Sokokali (no server needed).
+
+Run from the ``backend`` directory:  python -m app.cli
+"""
+
+import asyncio
+import logging
+
+from app.core.config import get_settings
+from app.core.container import build_container
+from app.schemas.chat import ChatRequest
+
+
+async def _run() -> None:
+    logging.disable(logging.CRITICAL)
+    container = build_container(get_settings())
+    print("=" * 50)
+    print("SOKOKALI AI SYSTEM STARTED (simulated sports data)")
+    print("Type 'fixtures', 'demo' for a sample prediction, or 'exit' to quit.")
+    print("=" * 50)
+    while True:
+        try:
+            message = input("Viewer: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            message = "exit"
+        if not message:
+            continue
+        if message.lower() == "exit":
+            print("Sokokali: Kwaheri! See you next time!")
+            return
+        if message.lower() == "demo":
+            message = "Arsenal vs Chelsea, who will win?"
+        if len(message) > container.settings.chat_max_message_length:
+            print("Sokokali: That message is too long, try a shorter one.")
+            continue
+        response = await container.chat.handle(ChatRequest(message=message, viewer_id="cli"))
+        print(f"Sokokali: {response.reply}")
+
+
+def main() -> None:
+    asyncio.run(_run())
+
+
+if __name__ == "__main__":
+    main()

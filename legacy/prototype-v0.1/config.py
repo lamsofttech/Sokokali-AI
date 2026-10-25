@@ -1,0 +1,3 @@
+APP_NAME = "Sokokali"
+APP_VERSION = "0.1.0"
+DEFAULT_LANGUAGE = "en"
