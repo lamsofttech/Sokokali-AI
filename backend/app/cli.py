@@ -14,8 +14,10 @@ from app.schemas.chat import ChatRequest
 async def _run() -> None:
     logging.disable(logging.CRITICAL)
     container = build_container(get_settings())
+    engine = f"Claude {container.llm.model}" if container.llm else "rule-based engine (no LLM configured)"
     print("=" * 50)
     print("SOKOKALI AI SYSTEM STARTED (simulated sports and forex data)")
+    print(f"Conversation engine: {engine}")
     print("Type 'fixtures', 'demo' for a sample prediction, 'forex' for signals, or 'exit' to quit.")
     print("=" * 50)
     while True:
@@ -27,6 +29,7 @@ async def _run() -> None:
             continue
         if message.lower() == "exit":
             print("Sokokali: Kwaheri! See you next time!")
+            await container.aclose()
             return
         if message.lower() == "demo":
             message = "Arsenal vs Chelsea, who will win?"
@@ -34,7 +37,7 @@ async def _run() -> None:
             print("Sokokali: That message is too long, try a shorter one.")
             continue
         response = await container.chat.handle(ChatRequest(message=message, viewer_id="cli"))
-        print(f"Sokokali: {response.reply}")
+        print(f"Sokokali [{response.engine}]: {response.reply}")
 
 
 def main() -> None:

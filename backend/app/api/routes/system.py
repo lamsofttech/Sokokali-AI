@@ -10,6 +10,23 @@ from app.schemas.system import ComponentStatus, HealthResponse, ReadinessRespons
 
 router = APIRouter(tags=["system"])
 
+
+def _ai_status(container: Container) -> ComponentStatus:
+    llm = container.llm
+    if llm is None:
+        return ComponentStatus(name="ai_engine", status="ok", detail="Rule-based engine only (no LLM configured)")
+    if not llm.available:
+        return ComponentStatus(
+            name="ai_engine",
+            status="degraded",
+            detail=f"Claude {llm.model} paused after: {llm.last_error}; using rule-based fallback",
+        )
+    return ComponentStatus(
+        name="ai_engine",
+        status="ok",
+        detail=f"Claude {llm.model} (effort {llm.effort}) with rule-based fallback",
+    )
+
 ContainerDep = Annotated[Container, Depends(get_container)]
 
 
@@ -44,11 +61,7 @@ async def service_status(container: ContainerDep) -> StatusResponse:
         started_at=container.started_at,
         uptime_seconds=round((now - container.started_at).total_seconds(), 1),
         components=[
-            ComponentStatus(
-                name="ai_engine",
-                status="ok",
-                detail="Rule-based multilingual engine (no LLM configured; Phase 2)",
-            ),
+            _ai_status(container),
             ComponentStatus(
                 name="sports_provider",
                 status="ok" if provider_ok else "down",

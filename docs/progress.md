@@ -19,4 +19,24 @@ Known limitations:
 - Memory and rate limits are in-process (Redis is planned).
 - Neither the football model nor the forex signal has been backtested or calibrated (Phase 3). Forex `strength` counts how many indicators agree; it is not a win probability.
 
-## Next: Phase 2, conversational intelligence (not started; needs approval)
+## Phase 2: Conversational intelligence (complete, awaiting approval)
+
+Done:
+- Anthropic Claude (`claude-opus-5-5`, effort `low`) via the official `anthropic` SDK (async client, 30 s timeout, 2 SDK retries), chosen by `SOKOKALI_LLM_PROVIDER` (`auto`/`anthropic`/`none`).
+- Five strict tools: upcoming fixtures, match prediction, team form, head-to-head, forex signal. Manual tool loop (max 4 rounds), with parallel tool calls run concurrently.
+- Grounding check: replies with percentages/decimals not found in tool results are rejected and answered by the rule-based engine.
+- Server-side refusal fallback (`fallbacks: "default"`), refusal/max_tokens handling, a 30 s cooldown after API outages, and a concurrency limit of 8 Claude calls.
+- Per-viewer conversation memory sent as text history (last 6 turns). Stable system prompt and tools (cache-friendly, append-only).
+- Moderation and guarantee requests stay deterministic and never reach Claude. Disclaimers are appended by the server.
+- `engine` field on chat responses; `ai_engine` status shows Claude, degraded or rules-only.
+- 13 new tests using a scripted fake client (94 total). The invalid-key path was checked against the real API (401, then fallback to rules).
+
+Not yet verified:
+- A live reply from Claude with a real key (no key is configured on this machine). Run `python -m app.cli` after adding `ANTHROPIC_API_KEY` to `.env`.
+
+Known limitations:
+- Language detection is still the keyword heuristic. Claude replies in the detected language.
+- The grounding check covers percentages and decimals, not whole numbers (scores, dates, Elo).
+- Conversation memory is in-process. Redis comes later.
+
+## Next: Phase 3, sports analytics (not started; needs approval)

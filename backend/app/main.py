@@ -39,9 +39,11 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                 "simulated_data": container.sports_provider.is_simulated,
                 "forex_enabled": settings.forex_enabled,
                 "forex_trade_levels_enabled": settings.forex_trade_levels_enabled,
+                "llm": container.llm.model if container.llm else None,
             },
         )
         yield
+        await container.aclose()
         logger.info("sokokali_stopped")
 
     app = FastAPI(

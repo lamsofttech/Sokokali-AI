@@ -5,7 +5,10 @@ Covers two markets: football (fixtures, results, predictions) and forex (technic
 
 import logging
 import time
+from collections.abc import Callable, Hashable
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Literal
 
 from app.integrations.forex.base import ForexDataError
 from app.integrations.sports.base import SportsDataError
@@ -15,12 +18,38 @@ from app.schemas.sports import Prediction, Team
 from app.services.ai_engine import SokokaliAI
 from app.services.conversation_memory import ConversationMemory, Turn
 from app.services.forex_engine import ForexSignalEngine, InsufficientForexDataError
+from app.services.llm_engine import AnthropicLLMEngine, HistoryTurn, LLMUnavailableError
 from app.services.prediction_engine import InsufficientDataError, PredictionEngine, team_form
 from app.services.sports_engine import SportsService
 
 logger = logging.getLogger(__name__)
 
 ANONYMOUS_VIEWER = "anonymous"
+
+
+def _unique[T](items: list[T], key: Callable[[T], Hashable]) -> list[T]:
+    seen: set[Hashable] = set()
+    out = []
+    for item in items:
+        if key(item) not in seen:
+            seen.add(key(item))
+            out.append(item)
+    return out
+
+
+@dataclass
+class _Draft:
+    """A reply plus the data behind it, before notices are added."""
+
+    reply: str
+    intent: Intent
+    teams: list[Team]
+    pairs: list[CurrencyPair]
+    prediction: Prediction | None = None
+    signals: list[ForexSignal] = field(default_factory=list)
+    uses_sports_data: bool = False
+    uses_forex_data: bool = False
+    engine: Literal["llm", "rules"] = "rules"
 
 
 class ChatService:
@@ -32,6 +61,8 @@ class ChatService:
         forex: ForexSignalEngine,
         memory: ConversationMemory,
         forex_enabled: bool = True,
+        llm: AnthropicLLMEngine | None = None,
+        llm_history_turns: int = 6,
     ) -> None:
         self.ai = ai
         self.sports = sports
@@ -39,6 +70,8 @@ class ChatService:
         self.forex = forex
         self.memory = memory
         self.forex_enabled = forex_enabled
+        self.llm = llm
+        self.llm_history_turns = llm_history_turns
 
     async def handle(self, request: ChatRequest) -> ChatResponse:
         viewer_id = request.viewer_id or ANONYMOUS_VIEWER
@@ -51,52 +84,110 @@ class ChatService:
         if not teams and intent in (Intent.PREDICTION, Intent.RESULTS, Intent.TEAM_FORM) and request.viewer_id:
             teams = await self._teams_by_id(self.memory.last_team_ids(viewer_id))
 
-        prediction: Prediction | None = None
-        signals: list[ForexSignal] = []
-        uses_sports_data = uses_forex_data = False
-        if intent == Intent.MODERATED:
-            reply = self.ai.compose(f"moderated_{analysis.moderation_reason}", language)
-            logger.info("chat_moderated", extra={"reason": analysis.moderation_reason, "viewer": viewer_id})
-        elif intent == Intent.FOREX:
-            reply, signals, uses_forex_data = await self._forex_reply(pairs, language)
-        elif intent == Intent.GUARANTEE_REQUEST and self.ai.mentions_forex(request.message, len(pairs)):
-            reply = self.ai.compose("guarantee_forex", language)
-        elif intent == Intent.PREDICTION:
-            reply, prediction, uses_sports_data = await self._prediction_reply(teams, language)
-        elif intent == Intent.FIXTURES:
-            reply, uses_sports_data = await self._fixtures_reply(teams, language)
-        elif intent == Intent.RESULTS:
-            reply, uses_sports_data = await self._results_reply(teams, language)
-        elif intent == Intent.TEAM_FORM:
-            reply, uses_sports_data = await self._form_reply(teams, language)
-        else:
-            key = {Intent.GREETING: "greeting", Intent.GUARANTEE_REQUEST: "guarantee", Intent.HELP: "help"}
-            reply = self.ai.compose(key.get(intent, "unknown"), language)
+        draft: _Draft | None = None
+        # Moderation and "guarantee" requests always get the deterministic answer; everything else goes to
+        # Claude when it is configured, with the rule-based engine as the fallback.
+        if intent not in (Intent.MODERATED, Intent.GUARANTEE_REQUEST) and self.llm is not None and self.llm.available:
+            draft = await self._llm_draft(request, viewer_id, language, intent, teams, pairs)
+        if draft is None:
+            draft = await self._rules_draft(request, analysis.moderation_reason, language, intent, teams, pairs)
 
-        is_simulated = (uses_sports_data and self.sports.provider.is_simulated) or (
-            uses_forex_data and self.forex.provider.is_simulated
+        is_simulated = (draft.uses_sports_data and self.sports.provider.is_simulated) or (
+            draft.uses_forex_data and self.forex.provider.is_simulated
         )
+        reply = draft.reply
         if is_simulated:
             reply = f"{reply} {self.ai.compose('simulated_notice', language)}"
 
-        if intent != Intent.MODERATED:  # never retain abusive messages or personal data
+        if draft.intent != Intent.MODERATED:  # never retain abusive messages or personal data
             self.memory.add(
                 viewer_id,
-                Turn(request.message, reply, intent, tuple(t.team_id for t in teams), time.monotonic()),
+                Turn(request.message, reply, draft.intent, tuple(t.team_id for t in draft.teams), time.monotonic()),
             )
 
         return ChatResponse(
             reply=reply,
             language=language,
-            intent=intent,
-            teams=[t.name for t in teams],
-            prediction=prediction,
-            currency_pairs=[p.display_name for p in pairs],
-            forex_signals=signals,
+            intent=draft.intent,
+            teams=[t.name for t in draft.teams],
+            prediction=draft.prediction,
+            currency_pairs=[p.display_name for p in draft.pairs],
+            forex_signals=draft.signals,
             is_simulated_data=is_simulated,
-            moderated=intent == Intent.MODERATED,
+            moderated=draft.intent == Intent.MODERATED,
+            engine=draft.engine,
             responded_at=datetime.now(UTC),
         )
+
+    async def _llm_draft(
+        self,
+        request: ChatRequest,
+        viewer_id: str,
+        language: Language,
+        intent: Intent,
+        teams: list[Team],
+        pairs: list[CurrencyPair],
+    ) -> _Draft | None:
+        assert self.llm is not None
+        history = (
+            [HistoryTurn(t.message, t.reply) for t in self.memory.history(viewer_id)][-self.llm_history_turns :]
+            if request.viewer_id and self.llm_history_turns
+            else []
+        )
+        try:
+            result = await self.llm.respond(request.message, language, history)
+        except LLMUnavailableError as exc:
+            logger.info("llm_fallback_to_rules", extra={"reason": str(exc)})
+            return None
+        outcomes = [o for o in result.outcomes if not o.is_error]
+        predictions = [p for o in outcomes for p in o.predictions]
+        signals = [s for o in outcomes for s in o.signals]
+        reply = result.reply
+        if predictions:
+            reply += " " + self.ai.compose("prediction_disclaimer", language)
+        if signals:
+            reply += " " + self.ai.compose("forex_risk", language)
+        return _Draft(
+            reply=reply,
+            intent=Intent.PREDICTION if predictions else Intent.FOREX if signals else intent,
+            teams=_unique(teams + [t for o in outcomes for t in o.teams], key=lambda t: t.team_id),
+            pairs=_unique(pairs + [p for o in outcomes for p in o.pairs], key=lambda p: p.symbol),
+            prediction=predictions[0] if predictions else None,
+            signals=signals,
+            uses_sports_data=any(o.used_sports_data for o in outcomes),
+            uses_forex_data=any(o.used_forex_data for o in outcomes),
+            engine="llm",
+        )
+
+    async def _rules_draft(
+        self,
+        request: ChatRequest,
+        moderation_reason: str | None,
+        language: Language,
+        intent: Intent,
+        teams: list[Team],
+        pairs: list[CurrencyPair],
+    ) -> _Draft:
+        draft = _Draft(reply="", intent=intent, teams=teams, pairs=pairs)
+        if intent == Intent.MODERATED:
+            draft.reply = self.ai.compose(f"moderated_{moderation_reason}", language)
+            logger.info("chat_moderated", extra={"reason": moderation_reason, "viewer": request.viewer_id})
+        elif intent == Intent.FOREX:
+            draft.reply, draft.signals, draft.uses_forex_data = await self._forex_reply(pairs, language)
+        elif intent == Intent.GUARANTEE_REQUEST and self.ai.mentions_forex(request.message, len(pairs)):
+            draft.reply = self.ai.compose("guarantee_forex", language)
+        elif intent == Intent.PREDICTION:
+            draft.reply, draft.prediction, draft.uses_sports_data = await self._prediction_reply(teams, language)
+        elif intent == Intent.FIXTURES:
+            draft.reply, draft.uses_sports_data = await self._fixtures_reply(teams, language)
+        elif intent == Intent.RESULTS:
+            draft.reply, draft.uses_sports_data = await self._results_reply(teams, language)
+        elif intent == Intent.TEAM_FORM:
+            draft.reply, draft.uses_sports_data = await self._form_reply(teams, language)
+        else:
+            key = {Intent.GREETING: "greeting", Intent.GUARANTEE_REQUEST: "guarantee", Intent.HELP: "help"}
+            draft.reply = self.ai.compose(key.get(intent, "unknown"), language)
+        return draft
 
     async def _teams_by_id(self, team_ids: tuple[str, ...]) -> list[Team]:
         if not team_ids:

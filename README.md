@@ -5,7 +5,7 @@ Sokokali is an AI-powered sports and markets presenter for a Kenyan audience. It
 - **Football:** fixtures, results, team form and probability-based match predictions.
 - **Forex:** technical-analysis signals (buy/sell/neutral) for EUR/USD, GBP/USD, USD/JPY, AUD/USD and USD/KES.
 
-**Current status: Phase 1 (backend foundation).** Only the backend exists so far. All data is **simulated**: the team names and currency pairs are real, but every result, fixture and price is synthetic, and every API response and chat reply says so. No LLM, livestream, avatar, betting or trading integration exists yet.
+**Current status: Phase 2 (conversational intelligence).** Only the backend exists so far. Chat is powered by **Anthropic Claude** when an API key is configured, with an offline rule-based engine as the fallback. All data is **simulated**: the team names and currency pairs are real, but every result, fixture and price is synthetic, and every API response and chat reply says so. No livestream, avatar, betting or trading integration exists yet.
 
 Predictions and signals are model estimates, not guarantees. They are not betting or financial advice.
 
@@ -39,6 +39,22 @@ Optional: copy the example configuration and edit it:
 ```powershell
 Copy-Item ..\.env.example ..\.env
 ```
+
+### Turn on Claude (optional)
+
+Without a key, Sokokali uses its offline rule-based engine. To use Claude:
+
+1. Create the `.env` file as above, then open it: `notepad ..\.env`
+2. Fill in `ANTHROPIC_API_KEY=` with your key from https://console.anthropic.com/ and save. `.env` is git-ignored. Never commit it or paste the key into chat.
+3. Check it works (from the `backend` folder):
+
+```powershell
+.\.venv\Scripts\python.exe -m app.cli
+```
+
+The banner should say `Conversation engine: Claude claude-opus-5-5`, and replies should be tagged `[llm]`. If they are tagged `[rules]`, Claude was unavailable. The server log (`llm_unavailable` / `llm_fallback_to_rules`) and `GET /api/v1/status` (`ai_engine`) say why.
+
+Each Claude reply is a paid API call (model `claude-opus-5-5`, effort `low`). Chat is rate-limited per client (`SOKOKALI_CHAT_RATE_LIMIT_PER_MINUTE`).
 
 ## Run the API
 
@@ -112,6 +128,8 @@ From the `backend` folder:
 | GET | `/api/v1/forex/signals` | Signals for every pair |
 | GET | `/api/v1/forex/signals/{symbol}` | Signal for one pair, e.g. `EURUSD` or `EUR-USD` |
 
+Chat responses include `engine` (`llm` or `rules`) so you can see which engine answered.
+
 The broadcast, gamification and WebSocket endpoints come in later phases. Admin authentication arrives with the broadcast control endpoints, since Phase 1 has no administrative actions.
 
 ## Project layout
@@ -130,7 +148,9 @@ backend/
     schemas/                    Pydantic request/response and domain models
     integrations/sports/        Sports provider interface (base.py) + simulated provider
     integrations/forex/         Forex price provider interface (base.py) + simulated provider
-    services/ai_engine.py       Language detection, intents, moderation, multilingual replies
+    services/ai_engine.py       Language detection, intents, moderation, multilingual replies (rule-based)
+    services/llm_engine.py      Claude conversation engine: tool loop, grounding check, fallback, cooldown
+    services/llm_tools.py       Tools Claude can call (fixtures, predictions, form, head-to-head, forex)
     services/chat_service.py    Chat orchestration and grounding in sports data
     services/conversation_memory.py  Per-viewer bounded history with expiry
     services/sports_engine.py   Team lookup, fixtures, results (the chat's "tools")
@@ -140,6 +160,15 @@ backend/
 docs/                           progress.md, decisions.md
 legacy/prototype-v0.1/          The original prototype, kept for reference
 ```
+
+## How the Claude integration stays grounded
+
+- Claude answers through **tools** that read the sports and forex services. It is told never to invent numbers.
+- Before a reply is used, every percentage and decimal in it is checked against the tool results. If any number is unsupported, the reply is discarded and the rule-based engine answers from verified data instead.
+- Abusive messages, personal data and "sure bet / guaranteed profit" requests never reach Claude. They get the fixed, safe answer.
+- Disclaimers ("probabilities, not guarantees", forex risk warning, simulated-data notice) are added by the server, not left to the model.
+- If Claude times out, is rate-limited, refuses or is down, the rule-based engine answers and Claude is paused for 30 seconds. Refusals are first retried on another model server-side (`fallbacks: "default"`).
+- Viewer messages are passed to Claude as chat comments, not instructions. Conversation history is per `viewer_id`; anonymous messages get no history.
 
 ## Security notes
 

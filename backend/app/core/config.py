@@ -8,7 +8,7 @@ file in the repository root or the ``backend`` directory.
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "Sokokali"
-    app_version: str = "0.2.0"
+    app_version: str = "0.3.0"
     environment: Literal["development", "test", "staging", "production"] = "development"
 
     log_level: str = "INFO"
@@ -49,6 +49,20 @@ class Settings(BaseSettings):
     # (in Kenya, the Capital Markets Authority licenses investment advisers). Keep this false until a
     # licensing/legal review approves it.
     forex_trade_levels_enabled: bool = False
+
+    # Conversational LLM (Phase 2).
+    #   auto      - use Anthropic Claude when ANTHROPIC_API_KEY is set, otherwise the rule-based engine
+    #   anthropic - always use Claude (the SDK also accepts `ant auth login` profiles)
+    #   none      - rule-based engine only (offline)
+    llm_provider: Literal["auto", "anthropic", "none"] = "auto"
+    anthropic_api_key: SecretStr | None = Field(default=None, validation_alias="ANTHROPIC_API_KEY")
+    llm_model: str = "claude-opus-5-5"
+    llm_effort: Literal["low", "medium", "high", "xhigh", "max"] = "low"
+    llm_max_tokens: int = Field(16000, ge=256)
+    llm_timeout_seconds: float = Field(30.0, gt=0)
+    llm_max_retries: int = Field(2, ge=0, le=10)
+    llm_max_tool_rounds: int = Field(4, ge=1, le=10)
+    llm_history_turns: int = Field(6, ge=0, le=50)
 
     # Chat.
     chat_max_message_length: int = Field(500, ge=1, le=2000)

@@ -153,6 +153,11 @@ _TEMPLATES: dict[str, dict[Language, str]] = {
         Language.SHENG: "Wasee! {home} vs {away} itakuwa moto! ({competition}, {kickoff}). Stats zinasema "
         "{home} ana {home_p}, droo {draw_p}, {away} {away_p}. Lakini kumbuka, hii ni chance tu, si guarantee!",
     },
+    "prediction_disclaimer": {
+        Language.ENGLISH: "Remember, these are probabilities, not guarantees!",
+        Language.KISWAHILI: "Kumbuka, huu ni uwezekano tu, si uhakika!",
+        Language.SHENG: "Lakini kumbuka, hii ni chance tu, si guarantee!",
+    },
     "no_fixture": {
         Language.ENGLISH: "I don't have a scheduled {team_a} vs {team_b} match in my data, so I won't make up "
         "a prediction. Ask me for upcoming fixtures!",

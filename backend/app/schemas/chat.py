@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -54,4 +55,7 @@ class ChatResponse(BaseModel):
     forex_signals: list[ForexSignal] = Field(default_factory=list)
     is_simulated_data: bool
     moderated: bool = False
+    engine: Literal["llm", "rules"] = Field(
+        default="rules", description="Which engine wrote the reply: Claude (llm) or the offline rule-based engine"
+    )
     responded_at: datetime

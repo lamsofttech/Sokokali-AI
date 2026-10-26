@@ -15,7 +15,7 @@ FIXED_NOW = datetime(2026, 10, 24, 12, tzinfo=UTC)
 
 @pytest.fixture
 def settings() -> Settings:
-    return Settings(environment="test", log_json=False, log_level="WARNING", _env_file=None)
+    return Settings(environment="test", log_json=False, log_level="WARNING", llm_provider="none", _env_file=None)
 
 
 @pytest.fixture

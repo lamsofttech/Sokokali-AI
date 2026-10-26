@@ -1,5 +1,6 @@
-# Sokokali backend runtime dependencies (Phase 1)
+# Sokokali backend runtime dependencies
 fastapi>=0.115,<1
 uvicorn[standard]>=0.30,<1
 pydantic>=2.7,<3
 pydantic-settings>=2.3,<3
+anthropic>=2.3,<3
