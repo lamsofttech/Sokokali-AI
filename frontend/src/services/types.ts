@@ -124,3 +124,29 @@ export interface StatusResponse {
   uptime_seconds: number;
   components: ComponentStatus[];
 }
+
+export interface CalibrationBin {
+  lower: number;
+  upper: number;
+  mean_predicted: number;
+  observed_frequency: number;
+  count: number;
+}
+
+export interface ModelMetrics {
+  model: "baseline" | "poisson" | "elo" | "blend";
+  matches: number;
+  log_loss: number;
+  brier_score: number;
+  accuracy: number;
+  calibration: CalibrationBin[];
+}
+
+export interface BacktestReport {
+  competitions: string[];
+  matches_evaluated: number;
+  warmup_matches: number;
+  poisson_weight: number;
+  outcome_frequencies: { home_win: number; draw: number; away_win: number };
+  metrics: ModelMetrics[];
+}

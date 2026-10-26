@@ -75,7 +75,11 @@ class ChatService:
 
     async def handle(self, request: ChatRequest) -> ChatResponse:
         viewer_id = request.viewer_id or ANONYMOUS_VIEWER
-        teams = await self.sports.find_teams(request.message)
+        try:
+            teams = await self.sports.find_teams(request.message)
+        except SportsDataError as exc:
+            logger.warning("team_lookup_unavailable", extra={"error": str(exc)})
+            teams = []
         pairs = await self.forex.find_pairs(request.message)
         analysis = self.ai.analyze(request.message, len(teams), request.language, len(pairs))
         language, intent = analysis.language, analysis.intent

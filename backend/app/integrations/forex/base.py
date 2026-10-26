@@ -28,5 +28,8 @@ class ForexDataProvider(ABC):
     async def health_check(self) -> bool:
         return True
 
+    async def aclose(self) -> None:
+        """Release network resources (HTTP clients); a no-op for offline providers."""
+
     def freshness(self) -> DataFreshness:
         return DataFreshness.build(self.name, self.is_simulated, self.data_as_of())

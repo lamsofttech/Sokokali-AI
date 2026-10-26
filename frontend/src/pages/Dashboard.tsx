@@ -5,6 +5,7 @@ import { ComingNextPanel } from "../components/ComingNextPanel";
 import { ErrorLogPanel } from "../components/ErrorLogPanel";
 import { FixturesPanel } from "../components/FixturesPanel";
 import { ForexPanel } from "../components/ForexPanel";
+import { ModelPanel } from "../components/ModelPanel";
 import { StatusPanel } from "../components/StatusPanel";
 import { Pill } from "../components/ui";
 import { usePolling } from "../hooks/usePolling";
@@ -49,6 +50,7 @@ export function Dashboard({ client }: { client: SokokaliApi }) {
         <div className="space-y-4">
           <ChatPanel client={client} onReply={status.refresh} />
           <FixturesPanel client={client} />
+          <ModelPanel client={client} />
         </div>
         <div className="space-y-4">
           <StatusPanel status={status} events={events} />

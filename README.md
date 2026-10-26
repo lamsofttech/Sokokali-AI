@@ -5,7 +5,7 @@ Sokokali is an AI-powered sports and markets presenter for a Kenyan audience. It
 - **Football:** fixtures, results, team form and probability-based match predictions.
 - **Forex:** technical-analysis signals (buy/sell/neutral) for EUR/USD, GBP/USD, USD/JPY, AUD/USD and USD/KES.
 
-**Current status: Phase 4 (dashboard).** There is a FastAPI backend and a React + TypeScript admin dashboard. Chat is powered by **Anthropic Claude** when an API key is configured, with an offline rule-based engine as the fallback. All data is **simulated**: the team names and currency pairs are real, but every result, fixture and price is synthetic, and every API response and chat reply says so. No livestream, avatar, betting or trading integration exists yet.
+**Current status: Phases 1-4 done** (backend, Claude chat, sports analytics, dashboard). There is a FastAPI backend and a React + TypeScript admin dashboard. Chat is powered by **Anthropic Claude** when an API key is configured, with an offline rule-based engine as the fallback. By default all data is **simulated**: the team names and currency pairs are real, but every result, fixture and price is synthetic, and every API response and chat reply says so. Real football data from football-data.org can be switched on (see below). Forex prices are always simulated for now. No livestream, avatar, betting or trading integration exists yet.
 
 Predictions and signals are model estimates, not guarantees. They are not betting or financial advice.
 
@@ -66,6 +66,24 @@ Without a key, Sokokali uses its offline rule-based engine. To use Claude:
 The banner should say `Conversation engine: Claude claude-opus-5-5`, and replies should be tagged `[llm]`. If they are tagged `[rules]`, Claude was unavailable. The server log (`llm_unavailable` / `llm_fallback_to_rules`) and `GET /api/v1/status` (`ai_engine`) say why.
 
 Each Claude reply is a paid API call (model `claude-opus-5-5`, effort `low`). Chat is rate-limited per client (`SOKOKALI_CHAT_RATE_LIMIT_PER_MINUTE`).
+
+## Real football data (optional)
+
+1. Get a free API key at https://www.football-data.org/client/register.
+2. In `.env`, set `SOKOKALI_SPORTS_PROVIDER=football_data` and `FOOTBALL_DATA_API_KEY=<your key>`. Optionally change `SOKOKALI_FOOTBALL_DATA_COMPETITIONS` (default `["PL"]`, the Premier League).
+3. Restart the backend. `GET /api/v1/status` should show `sports_provider: football-data.org (live data)`, and replies stop carrying the simulated-data notice.
+
+Sokokali downloads the current and previous season once, then reuses the data for 5 minutes (`SOKOKALI_SPORTS_CACHE_TTL_SECONDS`). Requests have a 10 s timeout and up to 3 attempts with backoff. If a refresh fails, the last good data keeps being served and the status shows `degraded`. A bad key fails immediately rather than retrying. The Kenyan Premier League is not on football-data.org's free tier, so with real data only the configured competitions are covered.
+
+## Model accuracy (backtesting)
+
+From the `backend` folder:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.evaluate --calibration
+```
+
+This predicts every finished match using only the matches before it, then compares four models on the same matches: a frequencies baseline, Poisson, Elo and the live blend. It reports log loss, Brier score, accuracy and calibration. The same report is at `GET /api/v1/models/evaluation` and in the dashboard's **Model accuracy** panel. On simulated data the numbers only show the pipeline works. Switch to real data to judge the model.
 
 ## Run the API
 
@@ -163,6 +181,7 @@ From the `backend` folder:
 | POST | `/api/v1/chat` | Viewer message in, Sokokali reply out (rate-limited per client) |
 | GET | `/api/v1/fixtures` | Upcoming fixtures and data freshness (`?limit=`, `?competition=`) |
 | GET | `/api/v1/predictions/{match_id}` | Home/draw/away probabilities, expected goals, key factors |
+| GET | `/api/v1/models/evaluation` | Walk-forward backtest: log loss, Brier score, accuracy, calibration (`?warmup=`, `?refit_every=`) |
 | GET | `/api/v1/forex/pairs` | Supported currency pairs |
 | GET | `/api/v1/forex/signals` | Signals for every pair |
 | GET | `/api/v1/forex/signals/{symbol}` | Signal for one pair, e.g. `EURUSD` or `EUR-USD` |
@@ -185,7 +204,10 @@ backend/
     api/deps.py                 FastAPI dependencies
     api/routes/                 system.py, chat.py, sports.py endpoints
     schemas/                    Pydantic request/response and domain models
-    integrations/sports/        Sports provider interface (base.py) + simulated provider
+    integrations/sports/        Sports provider interface (base.py), simulated provider, football_data.py (real data)
+    core/http.py                HTTP helper: timeouts, retries, backoff, Retry-After
+    services/backtest.py        Walk-forward backtesting and calibration
+    evaluate.py                 Backtest report on the command line
     integrations/forex/         Forex price provider interface (base.py) + simulated provider
     services/ai_engine.py       Language detection, intents, moderation, multilingual replies (rule-based)
     services/llm_engine.py      Claude conversation engine: tool loop, grounding check, fallback, cooldown

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from app.api.deps import get_container
 from app.core.container import Container
 from app.schemas.sports import FixtureList, Prediction
+from app.services.backtest import BacktestReport
 from app.services.prediction_engine import InsufficientDataError, MatchNotFoundError
 
 router = APIRouter(prefix="/api/v1", tags=["sports"])
@@ -41,3 +42,16 @@ async def prediction(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Match '{match_id}' not found") from None
     except InsufficientDataError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
+
+
+@router.get(
+    "/models/evaluation",
+    response_model=BacktestReport,
+    summary="Walk-forward backtest of the prediction model (log loss, Brier score, calibration)",
+)
+async def model_evaluation(
+    container: ContainerDep,
+    warmup: Annotated[int, Query(ge=5, le=500, description="Matches per competition used only for training")] = 20,
+    refit_every: Annotated[int, Query(ge=1, le=100, description="Refit the model every N matches")] = 1,
+) -> BacktestReport:
+    return await container.predictions.evaluate(warmup_matches=warmup, refit_every=refit_every)

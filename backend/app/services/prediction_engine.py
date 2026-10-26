@@ -10,13 +10,16 @@ Model (version set by ``Settings.prediction_model_version``):
 4. Elo ratings computed chronologically over the same history, converted to
    home/draw/away and blended with the Poisson output.
 
-This is a transparent baseline, not a calibrated betting model. Backtesting
-and calibration metrics arrive in Phase 3.
+This is a transparent baseline, not a calibrated betting model. Its
+walk-forward log loss, Brier score and calibration are measured in
+``app.services.backtest``.
 """
 
+import asyncio
 import math
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from app.integrations.sports.base import SportsDataProvider
 from app.schemas.sports import (
@@ -26,6 +29,10 @@ from app.schemas.sports import (
     Prediction,
     Probabilities,
 )
+
+
+if TYPE_CHECKING:
+    from app.services.backtest import BacktestReport
 
 
 class MatchNotFoundError(Exception):
@@ -150,6 +157,61 @@ def _team_strengths(results: list[MatchResult], shrinkage_games: float = 5.0) ->
     )
 
 
+DEFAULT_ELO = 1500.0
+ELO_HOME_ADVANTAGE = 60.0
+
+
+@dataclass(frozen=True)
+class FittedModel:
+    """Everything the model learns from a block of finished matches."""
+
+    strengths: _Strengths
+    elo: dict[str, float]
+    n_matches: int
+
+
+@dataclass(frozen=True)
+class Estimate:
+    poisson: MatchProbabilities
+    elo: MatchProbabilities
+    blended: MatchProbabilities
+    home_xg: float
+    away_xg: float
+    home_elo: float
+    away_elo: float
+    known_home: bool
+    known_away: bool
+
+
+def fit_model(results: list[MatchResult]) -> FittedModel:
+    """Fit on finished matches, oldest first. Callers must pass only matches before the one being predicted."""
+    if not results:
+        raise InsufficientDataError("No historical matches")
+    return FittedModel(_team_strengths(results), compute_elo(results), len(results))
+
+
+def estimate(model: FittedModel, home_id: str, away_id: str, poisson_weight: float) -> Estimate:
+    """Probabilities for one match. Teams without history are treated as league-average (attack = defence = 1)."""
+    s = model.strengths
+    home_xg = s.home_mean * s.attack.get(home_id, 1.0) * s.defence.get(away_id, 1.0)
+    away_xg = s.away_mean * s.attack.get(away_id, 1.0) * s.defence.get(home_id, 1.0)
+    poisson = predict_match(home_xg, away_xg)
+    home_elo, away_elo = model.elo.get(home_id, DEFAULT_ELO), model.elo.get(away_id, DEFAULT_ELO)
+    elo = elo_probabilities(home_elo, away_elo, ELO_HOME_ADVANTAGE)
+    w = poisson_weight
+    raw = [
+        w * p + (1 - w) * e
+        for p, e in zip(
+            (poisson.home_win, poisson.draw, poisson.away_win), (elo.home_win, elo.draw, elo.away_win), strict=True
+        )
+    ]
+    total = sum(raw)
+    blended = MatchProbabilities(raw[0] / total, raw[1] / total, raw[2] / total)
+    return Estimate(
+        poisson, elo, blended, home_xg, away_xg, home_elo, away_elo, home_id in s.attack, away_id in s.attack
+    )
+
+
 class PredictionEngine:
     def __init__(
         self,
@@ -162,6 +224,23 @@ class PredictionEngine:
         self.model_version = model_version
         self.poisson_weight = poisson_weight
         self.min_history_matches = min_history_matches
+        # Fitted models and backtests are reused until the provider's data changes (keys include data_as_of).
+        self._models: dict[tuple[str, datetime, int], FittedModel] = {}
+        self._evaluations: dict[tuple[datetime, int, int], "BacktestReport"] = {}
+
+    async def evaluate(self, warmup_matches: int = 20, refit_every: int = 1) -> "BacktestReport":
+        """Walk-forward backtest over all finished matches the provider has."""
+        from app.services.backtest import backtest  # imported here: backtest builds on this module
+
+        key = (self.provider.data_as_of(), warmup_matches, refit_every)
+        report = self._evaluations.get(key)
+        if report is None:
+            results = await self.provider.get_results()
+            report = await asyncio.to_thread(
+                backtest, results, self.poisson_weight, warmup_matches, refit_every
+            )  # CPU-bound: keep it off the event loop
+            self._evaluations = {key: report}
+        return report
 
     async def predict(self, match_id: str) -> Prediction:
         fixture = await self.provider.get_fixture(match_id)
@@ -169,44 +248,37 @@ class PredictionEngine:
             raise MatchNotFoundError(match_id)
         return await self.predict_fixture(fixture)
 
+    def _model_for(self, competition: str, history: list[MatchResult]) -> FittedModel:
+        key = (competition, self.provider.data_as_of(), len(history))
+        model = self._models.get(key)
+        if model is None:
+            if len(self._models) > 32:
+                self._models.clear()
+            model = self._models[key] = fit_model(history)
+        return model
+
     async def predict_fixture(self, fixture: Fixture) -> Prediction:
         history = await self.provider.get_results(competition=fixture.competition)
-        home_id, away_id = fixture.home_team.team_id, fixture.away_team.team_id
         if len(history) < self.min_history_matches:
             raise InsufficientDataError(f"Only {len(history)} historical matches for {fixture.competition}")
-        strengths = _team_strengths(history)
-        if home_id not in strengths.attack or away_id not in strengths.attack:
-            raise InsufficientDataError("No historical matches for one of the teams")
+        home_id, away_id = fixture.home_team.team_id, fixture.away_team.team_id
+        est = estimate(self._model_for(fixture.competition, history), home_id, away_id, self.poisson_weight)
 
-        home_xg = strengths.home_mean * strengths.attack[home_id] * strengths.defence[away_id]
-        away_xg = strengths.away_mean * strengths.attack[away_id] * strengths.defence[home_id]
-        poisson = predict_match(home_xg, away_xg)
-
-        elo = compute_elo(history)
-        elo_probs = elo_probabilities(elo[home_id], elo[away_id])
-
-        w = self.poisson_weight
-        blended = [
-            w * p + (1 - w) * e
-            for p, e in zip(
-                (poisson.home_win, poisson.draw, poisson.away_win),
-                (elo_probs.home_win, elo_probs.draw, elo_probs.away_win),
-                strict=True,
-            )
-        ]
-        total = sum(blended)
-        home_p, draw_p, away_p = (round(p / total, 4) for p in blended)
+        home_p, away_p = round(est.blended.home_win, 4), round(est.blended.away_win, 4)
         draw_p = round(1 - home_p - away_p, 4)  # make the three values sum to exactly 1
 
         home_name, away_name = fixture.home_team.name, fixture.away_team.name
         home_form, away_form = team_form(history, home_id), team_form(history, away_id)
         key_factors = [
-            f"Expected goals: {home_name} {home_xg:.2f} vs {away_name} {away_xg:.2f}",
-            f"Elo rating: {home_name} {elo[home_id]:.0f} vs {away_name} {elo[away_id]:.0f} "
-            "(home advantage +60 applied)",
+            f"Expected goals: {home_name} {est.home_xg:.2f} vs {away_name} {est.away_xg:.2f}",
+            f"Elo rating: {home_name} {est.home_elo:.0f} vs {away_name} {est.away_elo:.0f} "
+            f"(home advantage +{ELO_HOME_ADVANTAGE:.0f} applied)",
             f"Recent form (latest first): {home_name} {home_form or 'n/a'}, {away_name} {away_form or 'n/a'}",
             f"Based on {len(history)} historical matches in {fixture.competition}",
         ]
+        unknown = [name for name, known in ((home_name, est.known_home), (away_name, est.known_away)) if not known]
+        if unknown:
+            key_factors.append(f"No match history for {', '.join(unknown)}: rated as league average")
         if self.provider.is_simulated:
             key_factors.append("All inputs are SIMULATED data, not real match statistics")
 
@@ -219,7 +291,7 @@ class PredictionEngine:
             predicted_at=datetime.now(UTC),
             freshness=self.provider.freshness(),
             probabilities=Probabilities(home_win=home_p, draw=draw_p, away_win=away_p),
-            expected_goals=ExpectedGoals(home=round(home_xg, 2), away=round(away_xg, 2)),
+            expected_goals=ExpectedGoals(home=round(est.home_xg, 2), away=round(est.away_xg, 2)),
             model_version=self.model_version,
             key_factors=key_factors,
         )

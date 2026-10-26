@@ -51,6 +51,7 @@ async def service_status(container: ContainerDep) -> StatusResponse:
     s = container.settings
     provider = container.sports_provider
     provider_ok = await provider.health_check()
+    stale_error = getattr(provider, "last_error", None)  # set by network providers serving a cached snapshot
     fx = container.forex_provider
     fx_ok = await fx.health_check()
     now = datetime.now(UTC)
@@ -64,8 +65,9 @@ async def service_status(container: ContainerDep) -> StatusResponse:
             _ai_status(container),
             ComponentStatus(
                 name="sports_provider",
-                status="ok" if provider_ok else "down",
-                detail=f"{provider.name} ({'SIMULATED data' if provider.is_simulated else 'live data'})",
+                status="down" if not provider_ok else "degraded" if stale_error else "ok",
+                detail=f"{provider.name} ({'SIMULATED data' if provider.is_simulated else 'live data'})"
+                + (f"; serving cached data, last refresh failed: {stale_error}" if stale_error else ""),
             ),
             ComponentStatus(name="prediction_engine", status="ok", detail=container.predictions.model_version),
             ComponentStatus(

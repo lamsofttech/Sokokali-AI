@@ -4,6 +4,7 @@ Phase 2 exposes these same methods to the LLM as structured tools.
 """
 
 import re
+from datetime import datetime
 
 from app.integrations.sports.base import SportsDataProvider
 from app.schemas.sports import Fixture, MatchResult, Team
@@ -14,21 +15,28 @@ class SportsService:
         self.provider = provider
         self._alias_pattern: re.Pattern[str] | None = None
         self._alias_to_team: dict[str, Team] = {}
+        self._aliases_as_of: datetime | None = None
 
     async def _ensure_aliases(self) -> None:
-        if self._alias_pattern is not None:
+        teams = await self.provider.list_teams()  # may refresh the provider's data
+        if self._aliases_as_of == self.provider.data_as_of():
             return
-        for team in await self.provider.list_teams():
+        self._alias_to_team = {}
+        for team in teams:
             for alias in {team.name.lower(), *team.aliases}:
                 self._alias_to_team[alias] = team
         # Longest aliases first so "man city" wins over a shorter overlapping alias.
         aliases = sorted(self._alias_to_team, key=len, reverse=True)
-        self._alias_pattern = re.compile(r"(?<!\w)(" + "|".join(re.escape(a) for a in aliases) + r")(?!\w)")
+        self._alias_pattern = (
+            re.compile(r"(?<!\w)(" + "|".join(re.escape(a) for a in aliases) + r")(?!\w)") if aliases else None
+        )
+        self._aliases_as_of = self.provider.data_as_of()
 
     async def find_teams(self, text: str) -> list[Team]:
         """Teams mentioned in ``text``, in order of first appearance, without duplicates."""
         await self._ensure_aliases()
-        assert self._alias_pattern is not None
+        if self._alias_pattern is None:
+            return []
         found: list[Team] = []
         for match in self._alias_pattern.finditer(text.lower()):
             team = self._alias_to_team[match.group(1)]

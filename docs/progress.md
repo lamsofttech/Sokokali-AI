@@ -58,4 +58,22 @@ Not yet built (needs backend features first):
 Not yet verified:
 - No visual check in a real browser by me (no browser tool in this session), and `scripts/start-dev.ps1` was syntax-checked but not run.
 
-## Next: Phase 3 (sports analytics) or Phase 5 (avatar & voice) (not started; needs approval)
+## Phase 3: Sports analytics (complete, awaiting approval)
+
+Done:
+- football-data.org v4 provider (`SOKOKALI_SPORTS_PROVIDER=football_data`): current + previous season per competition, live/scheduled/finished parsing, team aliases, in-memory snapshot cache with TTL. Serves stale data when a refresh fails and reports `degraded` status.
+- Shared HTTP helper: timeouts, exponential backoff with jitter, `Retry-After`, no retries on 4xx other than 408/425/429.
+- Prediction engine split into `fit_model` / `estimate`. Fitted models are cached per data snapshot, and teams without history are rated as league average (instead of an error).
+- Walk-forward backtest (no future data): baseline vs Poisson vs Elo vs blend, with log loss, Brier score, accuracy and 10-bin calibration. Available via `python -m app.evaluate`, `GET /api/v1/models/evaluation` (cached per data snapshot, run off the event loop) and the dashboard's Model accuracy panel.
+- Chat keeps working if the sports provider is down (team lookup degrades to "no teams found").
+- 18 new backend tests (112 total) with mocked HTTP, plus 1 new frontend test (14 total). Real-network check: football-data.org was reached, and an invalid key was rejected (HTTP 400) and handled.
+
+Not yet verified:
+- A real download with a valid football-data.org key (none configured here).
+
+Known limitations / deferred:
+- On simulated data the blend beats the baseline (log loss 1.016 vs 1.088 over 72 matches), but 72 matches is too few to draw conclusions. Re-run on real data.
+- scikit-learn / XGBoost models are not added: with one or two seasons per league, the explainable Poisson/Elo baseline comes first. Add a gradient-boosted model only if a backtest on real data shows it beats the blend.
+- Prediction history is not stored yet (needs the PostgreSQL work in Phase 7). Forex prices are still simulated only.
+
+## Next: Phase 5, avatar & voice (not started; needs approval)

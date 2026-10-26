@@ -2,6 +2,7 @@
 // subscribers, which is how the dashboard shows API latency and the error log.
 
 import type {
+  BacktestReport,
   ChatRequest,
   ChatResponse,
   FixtureList,
@@ -96,6 +97,7 @@ export class SokokaliApi {
   fixtures = (limit = 20) => this.request<FixtureList>("GET", `/api/v1/fixtures?limit=${limit}`);
   prediction = (matchId: string) =>
     this.request<Prediction>("GET", `/api/v1/predictions/${encodeURIComponent(matchId)}`);
+  modelEvaluation = () => this.request<BacktestReport>("GET", "/api/v1/models/evaluation", undefined, 30_000);
   forexSignals = () => this.request<ForexSignalList>("GET", "/api/v1/forex/signals");
   chat = (payload: ChatRequest) => this.request<ChatResponse>("POST", "/api/v1/chat", payload, CHAT_TIMEOUT_MS);
 }

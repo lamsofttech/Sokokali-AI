@@ -6,6 +6,7 @@ import { SokokaliApi } from "../services/api";
 import { chatReply, jsonResponse, signal } from "../test/fixtures";
 import { ChatPanel } from "./ChatPanel";
 import { ForexPanel } from "./ForexPanel";
+import { ModelPanel } from "./ModelPanel";
 import { ProbabilityBar } from "./ProbabilityBar";
 
 describe("ProbabilityBar", () => {
@@ -84,5 +85,28 @@ describe("ForexPanel", () => {
       expect(screen.getByRole("alert")).toHaveTextContent("Forex signals unavailable: Forex analysis is disabled"),
     );
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+});
+
+describe("ModelPanel", () => {
+  it("shows backtest metrics and whether the live model beats the baseline", async () => {
+    const metric = (model: string, log_loss: number) => ({
+      model, matches: 72, log_loss, brier_score: 0.6, accuracy: 0.45, calibration: [],
+    });
+    const report = {
+      competitions: ["Premier League (simulated)"],
+      matches_evaluated: 72,
+      warmup_matches: 20,
+      poisson_weight: 0.7,
+      outcome_frequencies: { home_win: 0.43, draw: 0.32, away_win: 0.25 },
+      metrics: [metric("baseline", 1.088), metric("poisson", 1.018), metric("elo", 1.019), metric("blend", 1.016)],
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(report)));
+    render(<ModelPanel client={new SokokaliApi()} />);
+
+    expect(await screen.findByText("Beats baseline")).toBeInTheDocument();
+    expect(screen.getByText("1.016")).toBeInTheDocument();
+    expect(screen.getByText(/(best)/)).toBeInTheDocument();
+    expect(screen.getByText(/72 matches/)).toBeInTheDocument();
   });
 });

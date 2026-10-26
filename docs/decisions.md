@@ -26,3 +26,9 @@ Claude (`claude-opus-5-5`) writes replies, but only from tool results backed by 
 
 ## D9: Single-page dashboard with polling and a dev proxy
 The Phase 4 dashboard is one React page (no router) polling the REST API: status every 10 s, fixtures and signals every minute. We will switch to the `/ws/live` WebSocket when the broadcast feed exists (Phase 6). The Vite dev server proxies `/api` to the backend, so the browser talks to one origin. No new state or data-fetching libraries: React state plus two small hooks cover the current needs. TypeScript stays on 5.9 instead of 7.0 for tooling compatibility.
+
+## D10: football-data.org as the first real sports provider, with a snapshot cache
+football-data.org has a free tier covering the major European leagues, a stable v4 REST API and simple token auth, so Sokokali can run on real data at no cost. Each refresh downloads whole seasons (one request per competition-season) into an in-memory snapshot. Fixtures, results and predictions are served from that snapshot. This keeps us well inside the free tier's rate limit and means chat waits on the network at most once per TTL. A failed refresh keeps the last good snapshot instead of taking predictions offline. Redis replaces the in-memory snapshot when Sokokali runs on several replicas (Phase 7). Rejected for now: API-Football (richer, but the free tier is capped per day) and scraping (unauthorized).
+
+## D11: Backtest before adding heavier models
+Every model change has to beat the current one in a walk-forward backtest (log loss first, then Brier and calibration). With one or two seasons of data per league, scikit-learn/XGBoost would mostly overfit, so they are deferred until real-data backtests justify them.

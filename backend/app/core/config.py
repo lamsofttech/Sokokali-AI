@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "Sokokali"
-    app_version: str = "0.3.0"
+    app_version: str = "0.4.0"
     environment: Literal["development", "test", "staging", "production"] = "development"
 
     log_level: str = "INFO"
@@ -32,9 +32,19 @@ class Settings(BaseSettings):
         default_factory=lambda: ["http://localhost:5173", "http://127.0.0.1:5173"]
     )
 
-    # Sports data. Only the simulated provider exists in Phase 1.
-    sports_provider: Literal["simulated"] = "simulated"
+    # Sports data.
+    #   simulated     - offline synthetic data (default)
+    #   football_data - real data from football-data.org (needs FOOTBALL_DATA_API_KEY)
+    sports_provider: Literal["simulated", "football_data"] = "simulated"
     simulation_seed: int = 2024
+    football_data_api_key: SecretStr | None = Field(default=None, validation_alias="FOOTBALL_DATA_API_KEY")
+    football_data_base_url: str = "https://api.football-data.org/v4"
+    # JSON list of competition codes, e.g. ["PL"] or ["PL","PD"]; the free tier covers the major leagues.
+    football_data_competitions: list[str] = Field(default_factory=lambda: ["PL"])
+    football_data_seasons_of_history: int = Field(2, ge=1, le=5)
+    sports_cache_ttl_seconds: int = Field(300, ge=10)
+    http_timeout_seconds: float = Field(10.0, gt=0)
+    http_max_attempts: int = Field(3, ge=1, le=6)
 
     # Prediction model.
     prediction_model_version: str = "poisson-elo-blend-0.1.0"

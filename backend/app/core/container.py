@@ -12,6 +12,7 @@ from app.core.rate_limit import SlidingWindowRateLimiter
 from app.integrations.forex.base import ForexDataProvider
 from app.integrations.forex.simulated import SimulatedForexProvider
 from app.integrations.sports.base import SportsDataProvider
+from app.integrations.sports.football_data import FootballDataProvider
 from app.integrations.sports.simulated import SimulatedSportsProvider
 from app.services.ai_engine import SokokaliAI
 from app.services.chat_service import ChatService
@@ -41,6 +42,8 @@ class Container:
     async def aclose(self) -> None:
         if self.llm is not None:
             await self.llm.aclose()
+        await self.sports_provider.aclose()
+        await self.forex_provider.aclose()
 
 
 logger = logging.getLogger(__name__)
@@ -49,6 +52,19 @@ logger = logging.getLogger(__name__)
 def build_sports_provider(settings: Settings) -> SportsDataProvider:
     if settings.sports_provider == "simulated":
         return SimulatedSportsProvider(seed=settings.simulation_seed)
+    if settings.sports_provider == "football_data":
+        key = settings.football_data_api_key.get_secret_value().strip() if settings.football_data_api_key else ""
+        if not key:
+            raise ValueError("SOKOKALI_SPORTS_PROVIDER=football_data needs FOOTBALL_DATA_API_KEY in .env")
+        return FootballDataProvider(
+            api_key=key,
+            competitions=settings.football_data_competitions,
+            base_url=settings.football_data_base_url,
+            seasons_of_history=settings.football_data_seasons_of_history,
+            cache_ttl_seconds=settings.sports_cache_ttl_seconds,
+            timeout_seconds=settings.http_timeout_seconds,
+            max_attempts=settings.http_max_attempts,
+        )
     raise ValueError(f"Unsupported sports provider: {settings.sports_provider}")
 
 
