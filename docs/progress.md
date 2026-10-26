@@ -95,4 +95,24 @@ Known limitations:
 - Lip sync follows words and letters, not the audio waveform (the browser doesn't expose it). A paid TTS with viseme/timestamp output would allow true audio-driven lip sync.
 - Speech happens in the dashboard browser only; sending the presenter to OBS/livestream output is part of Phase 6/7.
 
-## Next: Phase 6, livestream & gamification (not started; needs approval)
+## Phase 6: Livestream & gamification (complete, awaiting approval)
+
+Done:
+- Normalized `LiveEvent` contract and `LiveEventSource` interface (with a fail-fast `check`). Simulated audience: joins, comments about real fixtures/pairs in en/sw/Sheng, likes, gifts, follows, shares, trivia answers, poll votes, plus duplicates, spam and moderated content. TikTok placeholder refuses to start (no authorized API).
+- Comment pipeline: event-ID dedup, repeated-comment filter, per-viewer rate limit, moderation, game answers kept out of the question queue, priority queue (questions about teams/pairs and first-time viewers first; gifts give no priority), bounded queue that drops the lowest priority, stale-question expiry.
+- Gamification: community milestones unlocking cosmetic outfits/backgrounds, 11 bilingual trivia questions, fans' polls (1/X/2 or team name, one vote each), free-participation leaderboard; gifts give a confetti/celebration effect only.
+- Broadcast controller: start/pause/resume/stop, one answer at a time paced by estimated speaking time, segments in quiet moments and at least every 3 minutes, source reconnect with exponential backoff, alerts, error isolation per step, clean shutdown.
+- Responsible-gambling reminders (en/sw/Sheng) as a segment; no wagering/deposit/betting-link code (compliance boundary).
+- Admin token auth (Bearer header / WS query), open only in development/test, fail-closed otherwise. Endpoints: broadcast status/start/pause/stop/segments, live event injection, gamification status, `/ws/live`.
+- Dashboard: Broadcast control (with admin token), Live feed, Engagement panel. The avatar speaks broadcast replies, celebrates gifts/milestones and wears unlocked cosmetics. WebSocket reconnects with backoff.
+- 26 new backend tests (138 total), 8 new frontend tests (40 total). Verified end to end in headless Edge through the Vite proxy: 3-minute simulated show, 378 events, 11 answers, 6 segments, cosmetics unlocked, 0 errors.
+
+Not yet verified:
+- Audio playback during the broadcast on a real browser with speakers (headless blocks audio; the captions-only fallback was confirmed instead).
+
+Known limitations:
+- State (queue, points, milestones) is in-process and resets on restart; Redis/PostgreSQL come in Phase 7.
+- The backend estimates speaking time from word count; the browser's actual voice may be faster or slower.
+- No real platform connector: TikTok needs authorized access; YouTube/Twitch official APIs are possible future connectors.
+
+## Next: Phase 7, cloud deployment (not started; needs approval)

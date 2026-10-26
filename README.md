@@ -5,7 +5,7 @@ Sokokali is an AI-powered sports and markets presenter for a Kenyan audience. It
 - **Football:** fixtures, results, team form and probability-based match predictions.
 - **Forex:** technical-analysis signals (buy/sell/neutral) for EUR/USD, GBP/USD, USD/JPY, AUD/USD and USD/KES.
 
-**Current status: Phases 1-5 done** (backend, Claude chat, sports analytics, dashboard, avatar & voice). There is a FastAPI backend and a React + TypeScript admin dashboard. Chat is powered by **Anthropic Claude** when an API key is configured, with an offline rule-based engine as the fallback. By default all data is **simulated**: the team names and currency pairs are real, but every result, fixture and price is synthetic, and every API response and chat reply says so. Real football data from football-data.org can be switched on (see below). Forex prices are always simulated for now. No livestream, betting or trading integration exists yet.
+**Current status: Phases 1-6 done** (backend, Claude chat, sports analytics, dashboard, avatar & voice, simulated livestream & gamification). There is a FastAPI backend and a React + TypeScript admin dashboard. Chat is powered by **Anthropic Claude** when an API key is configured, with an offline rule-based engine as the fallback. By default all data is **simulated**: the team names and currency pairs are real, but every result, fixture and price is synthetic, and every API response and chat reply says so. Real football data from football-data.org can be switched on (see below). Forex prices are always simulated for now. The livestream runs on a **simulated audience**: there is no real platform connection yet (TikTok has no officially authorized live-comments API; see below). There is no betting or trading integration.
 
 Predictions and signals are model estimates, not guarantees. They are not betting or financial advice.
 
@@ -152,6 +152,21 @@ Open http://localhost:5173. The dashboard shows:
 - **Error log:** failed API requests from this browser session.
 - **Avatar & voice:** a 3D Sokokali presenter that reads every chat reply aloud (see below).
 
+### Live broadcast (simulated audience)
+
+At the top of the dashboard, **Broadcast control** starts, pauses and stops a live show with simulated viewers. The viewers join, ask about the real fixtures and currency pairs, chat in English, Kiswahili and Sheng, like, follow, send gifts, answer trivia and vote in polls.
+
+- **What Sokokali answers:** every comment is checked first. Duplicates, repeats, spam (more than 4 comments a minute per viewer), abuse and personal data are filtered out, and the panel shows the counts. The rest are queued by priority: real questions about matches and currencies first, first-time viewers get a boost, greetings wait. **Gifts never buy priority.** Questions older than 90 seconds are skipped rather than answered late.
+- **No talking over itself:** the next answer waits until the previous one has been spoken (estimated from its length).
+- **Segments:** in quiet moments, and at least every 3 minutes even when busy, Sokokali runs a match preview, free trivia, a forex outlook, a fans' poll or a responsible-gambling reminder. The **Run now** buttons trigger one immediately.
+- **Pause** stops Sokokali talking but keeps receiving comments. **Stop** disconnects and clears the queue.
+- **Live feed:** every viewer event, what happened to each comment (queued with its priority, or why it was filtered) and Sokokali's on-air replies.
+- **Engagement:** community milestones (likes, viewers, comments) unlock cosmetic rewards. The presenter changes jersey (home, away, gold) and the studio changes look (floodlights, derby night). There is also a trivia round, poll votes and a free-participation leaderboard. **Points come only from free participation; gifts only trigger a celebration.**
+
+**Admin token:** in development the controls work without one. Anywhere else, set `SOKOKALI_ADMIN_TOKEN` in `.env`. Admin endpoints refuse all requests until it is set, then require `Authorization: Bearer <token>`. Enter the same token in the dashboard's **Admin token** box. The live feed (WebSocket `/ws/live`) uses the same token.
+
+**TikTok:** `SOKOKALI_LIVE_SOURCE=tiktok` exists, but it refuses to start. TikTok has no public, officially authorized API for live comments, and this project does not use reverse-engineered workarounds. When authorized access exists, only `backend/app/integrations/live/tiktok.py` needs implementing; the rest of the pipeline is ready. Platform webhooks or tests can also push events through `POST /api/v1/live/events`.
+
 ### Avatar & voice
 
 Every chat reply is spoken by the 3D presenter in the **Avatar & voice** panel, with captions and lip sync. It uses the browser's free built-in voice (Web Speech API), so there is nothing to install or pay for.
@@ -196,13 +211,19 @@ From the `backend` folder:
 | GET | `/api/v1/fixtures` | Upcoming fixtures and data freshness (`?limit=`, `?competition=`) |
 | GET | `/api/v1/predictions/{match_id}` | Home/draw/away probabilities, expected goals, key factors |
 | GET | `/api/v1/models/evaluation` | Walk-forward backtest: log loss, Brier score, accuracy, calibration (`?warmup=`, `?refit_every=`) |
+| GET | `/api/v1/broadcast/status` | Broadcast state and live stats |
+| POST | `/api/v1/broadcast/start` · `/pause` · `/stop` | Control the live show (admin) |
+| POST | `/api/v1/broadcast/segments/{segment}` | Run trivia, poll, match_preview, forex or responsible_gambling now (admin) |
+| POST | `/api/v1/live/events` | Inject a live event, e.g. from a platform webhook (admin) |
+| GET | `/api/v1/gamification/status` | Milestones, trivia, poll, leaderboard, cosmetics |
+| WS | `/ws/live` | Live feed: events, replies, game updates, state (admin token as `?token=`) |
 | GET | `/api/v1/forex/pairs` | Supported currency pairs |
 | GET | `/api/v1/forex/signals` | Signals for every pair |
 | GET | `/api/v1/forex/signals/{symbol}` | Signal for one pair, e.g. `EURUSD` or `EUR-USD` |
 
 Chat responses include `engine` (`llm` or `rules`) so you can see which engine answered.
 
-The broadcast, gamification and WebSocket endpoints come in later phases. Admin authentication arrives with the broadcast control endpoints, since Phase 1 has no administrative actions.
+Admin endpoints are marked (admin) and need the admin token outside development.
 
 ## Project layout
 
@@ -231,6 +252,13 @@ backend/
     services/sports_engine.py   Team lookup, fixtures, results (the chat's "tools")
     services/prediction_engine.py    Poisson + Elo prediction model
     services/speech_service.py  Speech cue per reply: speakable text, voice languages, avatar animation
+    services/live_pipeline.py   Comment intake: dedup, rate limit, moderation, priority queue
+    services/gamification.py    Milestones, cosmetics, trivia, polls, leaderboard
+    services/broadcast_controller.py  The live show: answers, pacing, segments, reconnects
+    services/live_hub.py        WebSocket fan-out
+    services/compliance.py      Responsible-gambling reminders (betting boundary)
+    integrations/live/          Live source interface, simulated audience, TikTok placeholder
+    core/security.py            Admin token checks
     services/forex_engine.py    EMA/MACD/RSI/ATR signals, currency pair lookup, trade-level gate
   tests/                        pytest suite
 frontend/

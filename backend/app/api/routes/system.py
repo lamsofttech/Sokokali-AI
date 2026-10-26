@@ -82,6 +82,13 @@ async def service_status(container: ContainerDep) -> StatusResponse:
                 f"{'ENABLED' if s.forex_trade_levels_enabled else 'disabled pending licensing review'}",
             ),
             ComponentStatus(
+                name="broadcast",
+                status="degraded" if container.broadcast.source_error else container.broadcast.state.value,
+                detail=f"live source: {container.broadcast.source.name}"
+                + (" (SIMULATED viewers)" if container.broadcast.source.is_simulated else "")
+                + (f"; {container.broadcast.source_error}" if container.broadcast.source_error else ""),
+            ),
+            ComponentStatus(
                 name="conversation_memory",
                 status="ok",
                 detail=f"in-memory, {len(container.memory)} active conversations",

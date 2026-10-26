@@ -11,13 +11,21 @@ from app.core.config import Settings
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.integrations.forex.base import ForexDataProvider
 from app.integrations.forex.simulated import SimulatedForexProvider
-from app.integrations.sports.base import SportsDataProvider
+from app.integrations.live.base import LiveEventSource
+from app.integrations.live.simulated import SimulatedLiveSource, Topics
+from app.integrations.live.tiktok import TikTokLiveSource
+from app.integrations.sports.base import SportsDataError, SportsDataProvider
 from app.integrations.sports.football_data import FootballDataProvider
 from app.integrations.sports.simulated import SimulatedSportsProvider
 from app.services.ai_engine import SokokaliAI
+from app.services.broadcast_controller import BroadcastController
 from app.services.chat_service import ChatService
+from app.services.compliance import ComplianceService
 from app.services.conversation_memory import ConversationMemory
 from app.services.forex_engine import ForexSignalEngine
+from app.services.gamification import GamificationEngine
+from app.services.live_hub import LiveHub
+from app.services.live_pipeline import LiveEventPipeline
 from app.services.llm_engine import AnthropicLLMEngine
 from app.services.llm_tools import ToolExecutor
 from app.services.prediction_engine import PredictionEngine
@@ -36,10 +44,14 @@ class Container:
     memory: ConversationMemory
     chat: ChatService
     chat_rate_limiter: SlidingWindowRateLimiter
+    hub: LiveHub
+    gamification: GamificationEngine
+    broadcast: BroadcastController
     llm: AnthropicLLMEngine | None = None
     started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     async def aclose(self) -> None:
+        await self.broadcast.stop()
         if self.llm is not None:
             await self.llm.aclose()
         await self.sports_provider.aclose()
@@ -88,11 +100,28 @@ def build_llm_client(settings: Settings) -> Any | None:
         return None
 
 
+def build_live_source(settings: Settings, sports: SportsService, forex_provider: ForexDataProvider) -> LiveEventSource:
+    if settings.live_source == "tiktok":
+        return TikTokLiveSource()
+
+    async def topics() -> Topics:
+        try:
+            fixtures = await sports.upcoming_fixtures(limit=10)
+        except SportsDataError:
+            fixtures = []
+        pairs = [p.display_name for p in await forex_provider.list_pairs()] if settings.forex_enabled else []
+        return Topics(matches=[(f.home_team.name, f.away_team.name) for f in fixtures], pairs=pairs)
+
+    return SimulatedLiveSource(topics, events_per_second=settings.live_sim_events_per_second)
+
+
 def build_container(
     settings: Settings,
     sports_provider: SportsDataProvider | None = None,
     forex_provider: ForexDataProvider | None = None,
     llm_client: Any | None = None,
+    live_source: LiveEventSource | None = None,
+    autoloop: bool = True,
 ) -> Container:
     provider = sports_provider or build_sports_provider(settings)
     fx_provider = forex_provider or build_forex_provider(settings)
@@ -126,6 +155,43 @@ def build_container(
         if client is not None
         else None
     )
+    chat = ChatService(
+        ai,
+        sports,
+        predictions,
+        forex,
+        memory,
+        forex_enabled=settings.forex_enabled,
+        llm=llm,
+        llm_history_turns=settings.llm_history_turns,
+    )
+    hub = LiveHub()
+    gamification = GamificationEngine()
+    broadcast = BroadcastController(
+        live_source or build_live_source(settings, sports, fx_provider),
+        LiveEventPipeline(
+            ai,
+            sports,
+            forex,
+            max_queue=settings.live_max_queue,
+            dedup_ttl_seconds=settings.live_dedup_ttl_seconds,
+            comments_per_viewer_per_minute=settings.live_comments_per_viewer_per_minute,
+            max_comment_age_seconds=settings.live_max_comment_age_seconds,
+        ),
+        gamification,
+        chat,
+        sports,
+        ComplianceService(settings.compliance_jurisdiction, settings.compliance_min_age),
+        hub,
+        forex_enabled=settings.forex_enabled,
+        words_per_second=settings.live_words_per_second,
+        min_gap_seconds=settings.live_min_gap_seconds,
+        segment_interval_seconds=settings.live_segment_interval_seconds,
+        segment_max_gap_seconds=settings.live_segment_max_gap_seconds,
+        trivia_seconds=settings.live_trivia_seconds,
+        poll_seconds=settings.live_poll_seconds,
+        autoloop=autoloop,
+    )
     return Container(
         settings=settings,
         sports_provider=provider,
@@ -135,16 +201,10 @@ def build_container(
         forex=forex,
         ai=ai,
         memory=memory,
-        chat=ChatService(
-            ai,
-            sports,
-            predictions,
-            forex,
-            memory,
-            forex_enabled=settings.forex_enabled,
-            llm=llm,
-            llm_history_turns=settings.llm_history_turns,
-        ),
+        chat=chat,
+        hub=hub,
+        gamification=gamification,
+        broadcast=broadcast,
         llm=llm,
         chat_rate_limiter=SlidingWindowRateLimiter(settings.chat_rate_limit_per_minute, 60.0),
     )

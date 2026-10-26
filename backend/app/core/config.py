@@ -8,7 +8,7 @@ file in the repository root or the ``backend`` directory.
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "Sokokali"
-    app_version: str = "0.4.0"
+    app_version: str = "0.6.0"
     environment: Literal["development", "test", "staging", "production"] = "development"
 
     log_level: str = "INFO"
@@ -74,11 +74,39 @@ class Settings(BaseSettings):
     llm_max_tool_rounds: int = Field(4, ge=1, le=10)
     llm_history_turns: int = Field(6, ge=0, le=50)
 
+    # Admin access for broadcast controls. Required outside development/test; send it as
+    # "Authorization: Bearer <token>" (or ?token=<token> on the WebSocket).
+    admin_token: SecretStr | None = None
+
+    # Livestream (Phase 6).
+    live_source: Literal["simulated", "tiktok"] = "simulated"
+    live_sim_events_per_second: float = Field(0.6, gt=0, le=20)
+    live_max_queue: int = Field(50, ge=1, le=1000)
+    live_dedup_ttl_seconds: float = Field(60, gt=0)
+    live_comments_per_viewer_per_minute: int = Field(4, ge=1, le=60)
+    live_max_comment_age_seconds: float = Field(90, gt=0)
+    live_words_per_second: float = Field(2.6, gt=0)
+    live_min_gap_seconds: float = Field(2.0, ge=0)
+    live_segment_interval_seconds: float = Field(45, ge=5)
+    live_segment_max_gap_seconds: float = Field(180, ge=30)
+    live_trivia_seconds: float = Field(30, ge=5)
+    live_poll_seconds: float = Field(45, ge=5)
+
+    # Responsible-gambling messaging (Module G).
+    compliance_jurisdiction: str = "KE"
+    compliance_min_age: int = Field(18, ge=18)
+
     # Chat.
     chat_max_message_length: int = Field(500, ge=1, le=2000)
     conversation_history_turns: int = Field(10, ge=1, le=100)
     conversation_ttl_seconds: int = Field(1800, ge=60)
     chat_rate_limit_per_minute: int = Field(30, ge=1)
+
+    @field_validator("admin_token", "anthropic_api_key", "football_data_api_key", mode="before")
+    @classmethod
+    def _blank_secret_is_unset(cls, value: object) -> object:
+        # "KEY=" in .env means "not configured", not "the empty string is the secret".
+        return None if isinstance(value, str) and not value.strip() else value
 
 
 @lru_cache

@@ -10,9 +10,17 @@ import type { LipSync } from "./lipSync";
 import type { AvatarAnimation } from "./speech";
 
 const SKIN = "#7a4a2a";
-const JERSEY = "#15803d";
-const STRIPE_RED = "#b91c1c";
-const STRIPE_WHITE = "#f8fafc";
+// Cosmetics unlocked by community milestones (never by gifts).
+export const OUTFITS: Record<string, { jersey: string; band: string; trim: string }> = {
+  home: { jersey: "#15803d", band: "#b91c1c", trim: "#f8fafc" },
+  away: { jersey: "#e5e7eb", band: "#15803d", trim: "#b91c1c" },
+  gold: { jersey: "#ca8a04", band: "#111827", trim: "#fef3c7" },
+};
+export const BACKGROUNDS: Record<string, { sky: string; ambient: number; left: string; right: string; floodlights: number }> = {
+  studio: { sky: "#07130c", ambient: 0.55, left: "#22c55e", right: "#ef4444", floodlights: 3 },
+  floodlights: { sky: "#0b1a12", ambient: 0.8, left: "#fef9c3", right: "#fef9c3", floodlights: 6 },
+  derby_night: { sky: "#0b1026", ambient: 0.5, left: "#3b82f6", right: "#ef4444", floodlights: 6 },
+};
 
 interface Pose {
   bodyY: number;
@@ -56,7 +64,8 @@ function targetPose(animation: AvatarAnimation, t: number): Pose {
   }
 }
 
-function Presenter({ animation, lipSync }: { animation: AvatarAnimation; lipSync: LipSync }) {
+function Presenter({ animation, lipSync, outfit }: { animation: AvatarAnimation; lipSync: LipSync; outfit: string }) {
+  const colors = OUTFITS[outfit] ?? OUTFITS.home!;
   const body = useRef<Group>(null);
   const head = useRef<Group>(null);
   const leftArm = useRef<Group>(null);
@@ -114,19 +123,19 @@ function Presenter({ animation, lipSync }: { animation: AvatarAnimation; lipSync
       {/* torso and jersey */}
       <mesh position={[0, 1.12, 0]} castShadow>
         <capsuleGeometry args={[0.27, 0.42, 8, 24]} />
-        <meshStandardMaterial color={JERSEY} roughness={0.7} />
+        <meshStandardMaterial color={colors.jersey} roughness={0.7} />
       </mesh>
       <mesh position={[0, 1.2, 0.02]} rotation={[0, 0, 0]}>
         <cylinderGeometry args={[0.276, 0.276, 0.07, 32, 1, true]} />
-        <meshStandardMaterial color={STRIPE_RED} roughness={0.7} />
+        <meshStandardMaterial color={colors.band} roughness={0.7} />
       </mesh>
       <mesh position={[0, 1.245, 0.02]}>
         <cylinderGeometry args={[0.277, 0.277, 0.018, 32, 1, true]} />
-        <meshStandardMaterial color={STRIPE_WHITE} />
+        <meshStandardMaterial color={colors.trim} />
       </mesh>
       <mesh position={[0, 1.155, 0.02]}>
         <cylinderGeometry args={[0.277, 0.277, 0.018, 32, 1, true]} />
-        <meshStandardMaterial color={STRIPE_WHITE} />
+        <meshStandardMaterial color={colors.trim} />
       </mesh>
 
       {/* neck and head */}
@@ -187,7 +196,7 @@ function Presenter({ animation, lipSync }: { animation: AvatarAnimation; lipSync
       <group ref={leftArm} position={[-0.33, 1.32, 0]}>
         <mesh position={[0, -0.24, 0]} castShadow>
           <capsuleGeometry args={[0.065, 0.36, 6, 16]} />
-          <meshStandardMaterial color={JERSEY} roughness={0.7} />
+          <meshStandardMaterial color={colors.jersey} roughness={0.7} />
         </mesh>
         <mesh position={[0, -0.5, 0]}>
           <sphereGeometry args={[0.065, 16, 16]} />
@@ -197,7 +206,7 @@ function Presenter({ animation, lipSync }: { animation: AvatarAnimation; lipSync
       <group ref={rightArm} position={[0.33, 1.32, 0]}>
         <mesh position={[0, -0.24, 0]} castShadow>
           <capsuleGeometry args={[0.065, 0.36, 6, 16]} />
-          <meshStandardMaterial color={JERSEY} roughness={0.7} />
+          <meshStandardMaterial color={colors.jersey} roughness={0.7} />
         </mesh>
         <mesh position={[0, -0.5, 0]}>
           <sphereGeometry args={[0.065, 16, 16]} />
@@ -219,17 +228,19 @@ function Presenter({ animation, lipSync }: { animation: AvatarAnimation; lipSync
   );
 }
 
-function Studio() {
+function Studio({ background }: { background: string }) {
+  const bg = BACKGROUNDS[background] ?? BACKGROUNDS.studio!;
+  const lights = [-2.2, 0, 2.2, -3.4, 1.1, 3.4].slice(0, bg.floodlights);
   return (
     <>
-      <color attach="background" args={["#07130c"]} />
-      <fog attach="fog" args={["#07130c", 4, 9]} />
-      <ambientLight intensity={0.55} />
+      <color attach="background" args={[bg.sky]} />
+      <fog attach="fog" args={[bg.sky, 4, 9]} />
+      <ambientLight intensity={bg.ambient} />
       <directionalLight position={[2, 4, 3]} intensity={1.6} castShadow />
-      <pointLight position={[-2.5, 3, -1]} intensity={8} color="#22c55e" />
-      <pointLight position={[2.5, 3, -1]} intensity={8} color="#ef4444" />
+      <pointLight position={[-2.5, 3, -1]} intensity={8} color={bg.left} />
+      <pointLight position={[2.5, 3, -1]} intensity={8} color={bg.right} />
       {/* floodlights */}
-      {[-2.2, 0, 2.2].map((x) => (
+      {lights.map((x) => (
         <mesh key={x} position={[x, 3.1, -3]}>
           <sphereGeometry args={[0.12, 16, 16]} />
           <meshBasicMaterial color="#fef9c3" />
@@ -263,11 +274,18 @@ function Studio() {
   );
 }
 
-export default function PresenterScene({ animation, lipSync }: { animation: AvatarAnimation; lipSync: LipSync }) {
+interface SceneProps {
+  animation: AvatarAnimation;
+  lipSync: LipSync;
+  outfit?: string;
+  background?: string;
+}
+
+export default function PresenterScene({ animation, lipSync, outfit = "home", background = "studio" }: SceneProps) {
   return (
     <Canvas shadows dpr={[1, 2]} camera={{ position: [0, 1.56, 2.3], fov: 30 }} onCreated={({ camera }) => camera.lookAt(0, 1.45, 0)}>
-      <Studio />
-      <Presenter animation={animation} lipSync={lipSync} />
+      <Studio background={background} />
+      <Presenter animation={animation} lipSync={lipSync} outfit={outfit} />
     </Canvas>
   );
 }

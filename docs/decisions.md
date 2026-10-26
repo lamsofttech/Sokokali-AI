@@ -35,3 +35,15 @@ Every model change has to beat the current one in a walk-forward backtest (log l
 
 ## D12: Browser text-to-speech first, behind a swappable engine
 The user chose a free voice. The Web Speech API is built into every major browser, needs no account or key, and Microsoft Edge on Windows offers Kiswahili (Kenya) voices. All speech goes through a `SpeechEngine` interface (browser, silent fallback), so a paid TTS (with audio streams and viseme timings for better lip sync) can be added later as another engine. The server sends a speech cue with each reply (cleaned text, voice languages, animation), so the Phase 6 broadcast controller can drive the same avatar. The demonstration presenter is built from three.js primitives (no model files, no licensing questions) and loaded lazily, so the rest of the dashboard stays fast.
+
+## D13: Platform-agnostic live pipeline, simulated audience first
+Every platform connector produces the same `LiveEvent`, so deduplication, moderation, prioritization, gamification and the broadcast controller are written once. The simulated audience exercises all of it locally, including the failure cases. TikTok has no officially authorized live-comments API, so its connector refuses to start rather than using reverse-engineered access (project rule: no unauthorized bypasses).
+
+## D14: Fair engagement by design
+Answer priority depends only on what a comment asks and whether the viewer has been answered before, never on gifts. Points come only from free participation. Gifts and milestones give cosmetic effects only. This keeps free participation meaningful and avoids pay-to-win or betting-adjacent incentives.
+
+## D15: Server-paced show, browser-spoken voice
+The broadcast controller decides what is said and when, and estimates speaking time from word count to avoid overlaps. The dashboard (or, later, a stream overlay) speaks it. This keeps one source of truth for the show while TTS stays free in the browser. When a server-side TTS is added, real audio durations will replace the estimate.
+
+## D16: Admin token, fail closed
+Control endpoints and the live feed (which shows viewer comments) need an admin token. In development they are open, for zero-setup local use. Everywhere else they refuse all requests until `SOKOKALI_ADMIN_TOKEN` is set. A single shared token is enough for one operator; real user accounts can come with the cloud deployment if more operators are needed.

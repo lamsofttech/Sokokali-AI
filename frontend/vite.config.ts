@@ -15,7 +15,7 @@ export default defineConfig(({ mode }) => {
     build: { chunkSizeWarningLimit: 1000 },
     server: {
       port: 5173,
-      proxy: { "/api": proxy, "/health": proxy, "/ready": proxy },
+      proxy: { "/api": proxy, "/health": proxy, "/ready": proxy, "/ws": { ...proxy, ws: true } },
     },
     test: {
       environment: "jsdom",

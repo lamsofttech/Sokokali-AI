@@ -32,10 +32,12 @@ export function ChatPanel({ client, onReply }: { client: SokokaliApi; onReply?: 
   const [language, setLanguage] = useState<Language | "auto">("auto");
   const [pending, setPending] = useState(false);
   const nextId = useRef(1);
-  const endRef = useRef<HTMLDivElement>(null);
+  const threadRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView?.({ behavior: "smooth", block: "end" });
+    // Scroll inside the chat box only (never the page), and only once there is something to show.
+    const thread = threadRef.current;
+    if (thread && (entries.length > 0 || pending)) thread.scrollTop = thread.scrollHeight;
   }, [entries, pending]);
 
   async function send(text: string) {
@@ -84,7 +86,7 @@ export function ChatPanel({ client, onReply }: { client: SokokaliApi; onReply?: 
       }
     >
       <div className="flex h-full flex-col gap-3">
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1" aria-live="polite">
+        <div ref={threadRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1" aria-live="polite">
           {entries.length === 0 && (
             <div className="rounded-lg border border-dashed border-zinc-700 p-4 text-sm text-zinc-400">
               <p className="mb-3">Try one of these, or type your own:</p>
@@ -109,7 +111,6 @@ export function ChatPanel({ client, onReply }: { client: SokokaliApi; onReply?: 
               <span className="size-2 animate-pulse rounded-full bg-emerald-400" /> Sokokali is answering...
             </p>
           )}
-          <div ref={endRef} />
         </div>
 
         <form onSubmit={onSubmit} className="space-y-2 border-t border-zinc-800 pt-3">

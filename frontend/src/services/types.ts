@@ -158,3 +158,103 @@ export interface BacktestReport {
   outcome_frequencies: { home_win: number; draw: number; away_win: number };
   metrics: ModelMetrics[];
 }
+
+export type BroadcastState = "stopped" | "running" | "paused";
+
+export interface BroadcastStatus {
+  state: BroadcastState;
+  source: string;
+  source_is_simulated: boolean;
+  source_error: string | null;
+  started_at: string | null;
+  uptime_seconds: number;
+  queue_size: number;
+  replies: number;
+  segments: number;
+  events_received: number;
+  comments_rejected: Record<string, number>;
+  errors: number;
+  last_error: string | null;
+  speaking_until: string | null;
+  connected_clients: number;
+}
+
+export type Segment = "match_preview" | "trivia" | "forex" | "poll" | "responsible_gambling";
+
+export interface MilestoneStatus {
+  id: string;
+  label: string;
+  metric: "likes" | "viewers" | "comments";
+  target: number;
+  current: number;
+  reached: boolean;
+}
+
+export interface GamificationStatus {
+  totals: Record<"viewers" | "comments" | "likes" | "gifts" | "follows" | "shares", number>;
+  milestones: MilestoneStatus[];
+  outfit: string;
+  background: string;
+  trivia: {
+    question_en: string;
+    question_sw: string;
+    options: string[];
+    closes_at: string;
+    answers: number;
+    winners: string[];
+  } | null;
+  poll: {
+    match_id: string;
+    home_team: string;
+    away_team: string;
+    closes_at: string;
+    votes: { home: number; draw: number; away: number };
+  } | null;
+  leaderboard: { viewer_name: string; points: number }[];
+  last_poll_result: {
+    home_team: string;
+    away_team: string;
+    votes: { home: number; draw: number; away: number };
+    total: number;
+  } | null;
+  rules: string;
+}
+
+export interface LiveEventData {
+  event_id: string;
+  platform: string;
+  viewer_id: string;
+  viewer_name: string;
+  kind: "comment" | "join" | "like" | "gift" | "follow" | "share";
+  text: string | null;
+  count: number;
+  gift_name: string | null;
+  received_at: string;
+  is_simulated: boolean;
+  accepted?: boolean;
+  reason?: string | null;
+  priority?: number | null;
+}
+
+export interface SayData {
+  source: string;
+  viewer_name?: string | null;
+  comment?: string | null;
+  text: string;
+  speech: SpeechCue | null;
+}
+
+export interface GameUpdate {
+  kind: string;
+  viewer_name: string | null;
+  message: string;
+  data: Record<string, unknown>;
+}
+
+export type LiveMessage =
+  | { type: "snapshot"; at?: string; data: { state: BroadcastStatus; gamification: GamificationStatus; recent: LiveMessage[] } }
+  | { type: "event"; at: string; data: LiveEventData }
+  | { type: "say"; at: string; data: SayData }
+  | { type: "game"; at: string; data: GameUpdate }
+  | { type: "state"; at: string; data: BroadcastStatus }
+  | { type: "alert"; at: string; data: { message: string } };

@@ -44,7 +44,15 @@ const SAMPLE_LINES: Record<string, { text: string; languages: string[] }> = {
   sw: { text: "Karibu sana wadau! Mimi ni Sokokali, mtangazaji wenu wa michezo.", languages: ["sw-KE", "sw", "en-KE"] },
 };
 
-export function AvatarPanel({ speech }: { speech: SpeechController }) {
+export function AvatarPanel({
+  speech,
+  outfit = "home",
+  background = "studio",
+}: {
+  speech: SpeechController;
+  outfit?: string;
+  background?: string;
+}) {
   const hasWebgl = useMemo(webglAvailable, []);
   const { state, settings } = speech;
   const speaking = state.status === "speaking";
@@ -75,7 +83,7 @@ export function AvatarPanel({ speech }: { speech: SpeechController }) {
         {hasWebgl ? (
           <SceneBoundary fallback={<FallbackPresenter speaking={speaking} />}>
             <Suspense fallback={<p className="p-4 text-sm text-zinc-400">Loading presenter...</p>}>
-              <PresenterScene animation={speech.animation} lipSync={speech.lipSync} />
+              <PresenterScene animation={speech.animation} lipSync={speech.lipSync} outfit={outfit} background={background} />
             </Suspense>
           </SceneBoundary>
         ) : (
@@ -92,7 +100,7 @@ export function AvatarPanel({ speech }: { speech: SpeechController }) {
         {speech.caption && (
           <p
             aria-live="polite"
-            className="absolute inset-x-2 bottom-2 rounded-md bg-black/70 px-3 py-1.5 text-center text-sm leading-snug text-white"
+            className="absolute inset-x-2 bottom-2 line-clamp-3 rounded-md bg-black/70 px-3 py-1 text-center text-xs leading-snug text-white"
           >
             {speech.caption}
           </p>

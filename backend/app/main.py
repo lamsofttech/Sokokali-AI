@@ -13,10 +13,11 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.routes import chat, forex, sports, system
+from app.api.routes import broadcast, chat, forex, sports, system
 from app.core.config import Settings, get_settings
 from app.core.container import Container, build_container
 from app.core.logging import configure_logging
+from app.core.security import admin_token_required
 from app.integrations.forex.base import ForexDataError
 from app.integrations.sports.base import SportsDataError
 
@@ -42,6 +43,11 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                 "llm": container.llm.model if container.llm else None,
             },
         )
+        if settings.admin_token is None:
+            if admin_token_required(settings):
+                logger.error("admin_token_missing", extra={"effect": "admin endpoints disabled until SOKOKALI_ADMIN_TOKEN is set"})
+            else:
+                logger.warning("admin_token_not_set", extra={"effect": "admin endpoints open (development only)"})
         yield
         await container.aclose()
         logger.info("sokokali_stopped")
@@ -100,6 +106,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     app.include_router(chat.router)
     app.include_router(sports.router)
     app.include_router(forex.router)
+    app.include_router(broadcast.router)
     return app
 
 

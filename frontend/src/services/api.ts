@@ -3,6 +3,9 @@
 
 import type {
   BacktestReport,
+  BroadcastStatus,
+  GamificationStatus,
+  Segment,
   ChatRequest,
   ChatResponse,
   FixtureList,
@@ -42,6 +45,8 @@ export class SokokaliApi {
   private readonly baseUrl: string;
   private readonly listeners = new Set<Listener>();
   private nextId = 1;
+  /** Sent as a Bearer token on admin requests (broadcast controls). */
+  adminToken = "";
 
   constructor(baseUrl = "") {
     this.baseUrl = baseUrl.replace(/\/$/, "");
@@ -57,7 +62,13 @@ export class SokokaliApi {
     this.listeners.forEach((listener) => listener(full));
   }
 
-  private async request<T>(method: string, path: string, body?: unknown, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
+  private async request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    admin = false,
+  ): Promise<T> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     const started = performance.now();
@@ -66,7 +77,10 @@ export class SokokaliApi {
     try {
       const response = await fetch(`${this.baseUrl}${path}`, {
         method,
-        headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+        headers: {
+          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+          ...(admin && this.adminToken ? { Authorization: `Bearer ${this.adminToken}` } : {}),
+        },
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: controller.signal,
       });
@@ -99,6 +113,12 @@ export class SokokaliApi {
     this.request<Prediction>("GET", `/api/v1/predictions/${encodeURIComponent(matchId)}`);
   modelEvaluation = () => this.request<BacktestReport>("GET", "/api/v1/models/evaluation", undefined, 30_000);
   forexSignals = () => this.request<ForexSignalList>("GET", "/api/v1/forex/signals");
+  broadcastStatus = () => this.request<BroadcastStatus>("GET", "/api/v1/broadcast/status");
+  broadcast = (action: "start" | "pause" | "stop") =>
+    this.request<BroadcastStatus>("POST", `/api/v1/broadcast/${action}`, undefined, DEFAULT_TIMEOUT_MS, true);
+  runSegment = (segment: Segment) =>
+    this.request<{ started: string }>("POST", `/api/v1/broadcast/segments/${segment}`, undefined, 60_000, true);
+  gamification = () => this.request<GamificationStatus>("GET", "/api/v1/gamification/status");
   chat = (payload: ChatRequest) => this.request<ChatResponse>("POST", "/api/v1/chat", payload, CHAT_TIMEOUT_MS);
 }
 

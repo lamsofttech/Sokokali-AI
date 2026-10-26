@@ -1,7 +1,10 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useSpeech } from "../avatar/useSpeech";
 import { AvatarPanel } from "../components/AvatarPanel";
+import { BroadcastPanel } from "../components/BroadcastPanel";
+import { GamificationPanel } from "../components/GamificationPanel";
+import { LiveFeedPanel } from "../components/LiveFeedPanel";
 
 import { ChatPanel } from "../components/ChatPanel";
 import { ComingNextPanel } from "../components/ComingNextPanel";
@@ -12,16 +15,75 @@ import { ModelPanel } from "../components/ModelPanel";
 import { StatusPanel } from "../components/StatusPanel";
 import { Pill } from "../components/ui";
 import { usePolling } from "../hooks/usePolling";
+import { useLiveFeed } from "../hooks/useLiveFeed";
 import { useRequestLog } from "../hooks/useRequestLog";
 import type { SokokaliApi } from "../services/api";
-import type { ChatResponse } from "../services/types";
+import type { ChatResponse, GameUpdate, GamificationStatus, SayData } from "../services/types";
+
+const TOKEN_KEY = "sokokali.adminToken";
+
+function loadToken(): string {
+  try {
+    return localStorage.getItem(TOKEN_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
 
 export function Dashboard({ client }: { client: SokokaliApi }) {
   const fetchStatus = useCallback(() => client.status(), [client]);
   const status = usePolling(fetchStatus, 10_000);
   const events = useRequestLog(client);
   const speech = useSpeech();
-  const { speak } = speech;
+  const { speak, celebrate } = speech;
+  const [adminToken, setAdminToken] = useState(loadToken);
+  useEffect(() => {
+    client.adminToken = adminToken;
+  }, [client, adminToken]);
+  const saveToken = useCallback((token: string) => {
+    setAdminToken(token);
+    try {
+      localStorage.setItem(TOKEN_KEY, token);
+    } catch {
+      // storage blocked: token lasts for this session only
+    }
+  }, []);
+
+  const gamificationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const setGamificationRef = useRef<(g: GamificationStatus) => void>(() => undefined);
+  const live = useLiveFeed(adminToken, {
+    onSay: useCallback(
+      (say: SayData) => {
+        if (say.speech) {
+          speak({
+            text: say.speech.text,
+            languages: say.speech.voice_languages,
+            animation: say.speech.animation,
+            simulated: say.speech.show_simulated_banner,
+          });
+        }
+      },
+      [speak],
+    ),
+    onGame: useCallback(
+      (update: GameUpdate) => {
+        // Gifts and milestones get a visual celebration only; they never jump the answer queue.
+        if (update.kind === "gift" || update.kind === "milestone") celebrate();
+      },
+      [celebrate],
+    ),
+    onGamificationChanged: useCallback(() => {
+      if (gamificationTimer.current) return; // at most one refresh per second
+      gamificationTimer.current = setTimeout(() => {
+        gamificationTimer.current = null;
+        client.gamification().then((g) => setGamificationRef.current(g), () => undefined);
+      }, 1000);
+    }, [client]),
+  });
+  setGamificationRef.current = live.setGamification;
+  useEffect(() => () => {
+    if (gamificationTimer.current) clearTimeout(gamificationTimer.current);
+  }, []);
   const refreshStatus = status.refresh;
   const onReply = useCallback(
     (reply: ChatResponse) => {
@@ -69,12 +131,22 @@ export function Dashboard({ client }: { client: SokokaliApi }) {
 
       <main className="mx-auto grid max-w-7xl gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <div className="space-y-4">
+          <BroadcastPanel
+            client={client}
+            state={live.state}
+            connected={live.connected}
+            authError={live.authError}
+            token={adminToken}
+            onTokenChange={saveToken}
+          />
+          <LiveFeedPanel feed={live.feed} simulated={live.state?.source_is_simulated ?? false} />
           <ChatPanel client={client} onReply={onReply} />
           <FixturesPanel client={client} />
           <ModelPanel client={client} />
         </div>
         <div className="space-y-4">
-          <AvatarPanel speech={speech} />
+          <AvatarPanel speech={speech} outfit={live.gamification?.outfit} background={live.gamification?.background} />
+          <GamificationPanel status={live.gamification} />
           <StatusPanel status={status} events={events} />
           <ForexPanel client={client} />
           <ErrorLogPanel events={events} />
