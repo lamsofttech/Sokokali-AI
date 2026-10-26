@@ -1,10 +1,23 @@
 # Sokokali
 
-Sokokali is an AI-powered sports presenter for a Kenyan audience. It chats in English, Kiswahili and Sheng, answers questions about fixtures, results and team form, and gives probability-based football predictions.
+Sokokali is an AI-powered sports and markets presenter for a Kenyan audience. It chats in English, Kiswahili and Sheng. It covers two markets:
 
-**Current status: Phase 1 (backend foundation).** Only the backend exists so far. All sports data is **simulated**: the team names are real clubs, but every result and fixture is synthetic, and every API response and chat reply says so. No LLM, livestream, avatar or betting integration exists yet.
+- **Football:** fixtures, results, team form and probability-based match predictions.
+- **Forex:** technical-analysis signals (buy/sell/neutral) for EUR/USD, GBP/USD, USD/JPY, AUD/USD and USD/KES.
 
-Predictions are model estimates, not guarantees, and are not betting advice.
+**Current status: Phase 1 (backend foundation).** Only the backend exists so far. All data is **simulated**: the team names and currency pairs are real, but every result, fixture and price is synthetic, and every API response and chat reply says so. No LLM, livestream, avatar, betting or trading integration exists yet.
+
+Predictions and signals are model estimates, not guarantees. They are not betting or financial advice.
+
+### Forex compliance boundary
+
+Publishing buy/sell calls with entry, stop-loss and take-profit levels to a public audience may count as regulated investment advice. In Kenya, the Capital Markets Authority (CMA) licenses investment advisers and forex brokers. So:
+
+- Trade levels are **off by default** (`SOKOKALI_FOREX_TRADE_LEVELS_ENABLED=false`). Signals then show direction, strength, price and indicators only. Turn this on only after a licensing/legal review.
+- Every forex reply carries a high-risk warning and says it is educational, not financial advice.
+- "Guaranteed profit" requests are refused with a red-flag warning.
+- There are no broker referrals, no account links and no trade execution.
+- `SOKOKALI_FOREX_ENABLED=false` switches forex off completely.
 
 ## Requirements
 
@@ -44,6 +57,8 @@ Then open these in your browser:
 | http://127.0.0.1:8000/api/v1/status | Component status (shows that sports data is SIMULATED) |
 | http://127.0.0.1:8000/api/v1/fixtures | Upcoming simulated fixtures |
 | http://127.0.0.1:8000/api/v1/predictions/sim-epl-f001 | Prediction for the first fixture (Arsenal vs Chelsea) |
+| http://127.0.0.1:8000/api/v1/forex/signals | Forex signals for every pair |
+| http://127.0.0.1:8000/api/v1/forex/signals/USDKES | Forex signal for one pair |
 
 Press `Ctrl+C` in the terminal to stop the server.
 
@@ -65,13 +80,15 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/v1/chat `
 
 Other messages to try: `Niaje msee! Gor vs Leopards nani atawin?`, `fixtures`, `Liverpool form`, `Gor Mahia results`, `Nipe sure bet ya leo`, and a follow-up such as `So who will win?` with the same `viewer_id`.
 
+Forex messages: `EUR/USD signal`, `Nipe uchambuzi wa forex leo`, `Niaje msee, pauni iko aje?`, `USD/KES`, `Give me guaranteed forex profit`.
+
 ## Terminal chat (no server)
 
 ```powershell
 .\.venv\Scripts\python.exe -m app.cli
 ```
 
-Type `demo` for a sample prediction and `exit` to quit.
+Type `demo` for a sample prediction, `forex` for signals, and `exit` to quit.
 
 ## Run the tests
 
@@ -91,6 +108,9 @@ From the `backend` folder:
 | POST | `/api/v1/chat` | Viewer message in, Sokokali reply out (rate-limited per client) |
 | GET | `/api/v1/fixtures` | Upcoming fixtures and data freshness (`?limit=`, `?competition=`) |
 | GET | `/api/v1/predictions/{match_id}` | Home/draw/away probabilities, expected goals, key factors |
+| GET | `/api/v1/forex/pairs` | Supported currency pairs |
+| GET | `/api/v1/forex/signals` | Signals for every pair |
+| GET | `/api/v1/forex/signals/{symbol}` | Signal for one pair, e.g. `EURUSD` or `EUR-USD` |
 
 The broadcast, gamification and WebSocket endpoints come in later phases. Admin authentication arrives with the broadcast control endpoints, since Phase 1 has no administrative actions.
 
@@ -108,12 +128,14 @@ backend/
     api/deps.py                 FastAPI dependencies
     api/routes/                 system.py, chat.py, sports.py endpoints
     schemas/                    Pydantic request/response and domain models
-    integrations/sports/        Provider interface (base.py) + simulated provider
+    integrations/sports/        Sports provider interface (base.py) + simulated provider
+    integrations/forex/         Forex price provider interface (base.py) + simulated provider
     services/ai_engine.py       Language detection, intents, moderation, multilingual replies
     services/chat_service.py    Chat orchestration and grounding in sports data
     services/conversation_memory.py  Per-viewer bounded history with expiry
     services/sports_engine.py   Team lookup, fixtures, results (the chat's "tools")
     services/prediction_engine.py    Poisson + Elo prediction model
+    services/forex_engine.py    EMA/MACD/RSI/ATR signals, currency pair lookup, trade-level gate
   tests/                        pytest suite
 docs/                           progress.md, decisions.md
 legacy/prototype-v0.1/          The original prototype, kept for reference

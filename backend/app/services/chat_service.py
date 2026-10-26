@@ -1,14 +1,20 @@
-"""Chat orchestration: moderate -> understand -> fetch verified data -> reply -> remember."""
+"""Chat orchestration: moderate -> understand -> fetch verified data -> reply -> remember.
+
+Covers two markets: football (fixtures, results, predictions) and forex (technical signals).
+"""
 
 import logging
 import time
 from datetime import UTC, datetime
 
+from app.integrations.forex.base import ForexDataError
 from app.integrations.sports.base import SportsDataError
 from app.schemas.chat import ChatRequest, ChatResponse, Intent, Language
+from app.schemas.forex import CurrencyPair, ForexSignal
 from app.schemas.sports import Prediction, Team
 from app.services.ai_engine import SokokaliAI
 from app.services.conversation_memory import ConversationMemory, Turn
+from app.services.forex_engine import ForexSignalEngine, InsufficientForexDataError
 from app.services.prediction_engine import InsufficientDataError, PredictionEngine, team_form
 from app.services.sports_engine import SportsService
 
@@ -23,17 +29,22 @@ class ChatService:
         ai: SokokaliAI,
         sports: SportsService,
         predictions: PredictionEngine,
+        forex: ForexSignalEngine,
         memory: ConversationMemory,
+        forex_enabled: bool = True,
     ) -> None:
         self.ai = ai
         self.sports = sports
         self.predictions = predictions
+        self.forex = forex
         self.memory = memory
+        self.forex_enabled = forex_enabled
 
     async def handle(self, request: ChatRequest) -> ChatResponse:
         viewer_id = request.viewer_id or ANONYMOUS_VIEWER
         teams = await self.sports.find_teams(request.message)
-        analysis = self.ai.analyze(request.message, len(teams), request.language)
+        pairs = await self.forex.find_pairs(request.message)
+        analysis = self.ai.analyze(request.message, len(teams), request.language, len(pairs))
         language, intent = analysis.language, analysis.intent
 
         # Follow-up questions ("na nani atashinda?") reuse the teams from earlier in the conversation.
@@ -41,10 +52,15 @@ class ChatService:
             teams = await self._teams_by_id(self.memory.last_team_ids(viewer_id))
 
         prediction: Prediction | None = None
-        uses_sports_data = False
+        signals: list[ForexSignal] = []
+        uses_sports_data = uses_forex_data = False
         if intent == Intent.MODERATED:
             reply = self.ai.compose(f"moderated_{analysis.moderation_reason}", language)
             logger.info("chat_moderated", extra={"reason": analysis.moderation_reason, "viewer": viewer_id})
+        elif intent == Intent.FOREX:
+            reply, signals, uses_forex_data = await self._forex_reply(pairs, language)
+        elif intent == Intent.GUARANTEE_REQUEST and self.ai.mentions_forex(request.message, len(pairs)):
+            reply = self.ai.compose("guarantee_forex", language)
         elif intent == Intent.PREDICTION:
             reply, prediction, uses_sports_data = await self._prediction_reply(teams, language)
         elif intent == Intent.FIXTURES:
@@ -57,7 +73,9 @@ class ChatService:
             key = {Intent.GREETING: "greeting", Intent.GUARANTEE_REQUEST: "guarantee", Intent.HELP: "help"}
             reply = self.ai.compose(key.get(intent, "unknown"), language)
 
-        is_simulated = uses_sports_data and self.sports.provider.is_simulated
+        is_simulated = (uses_sports_data and self.sports.provider.is_simulated) or (
+            uses_forex_data and self.forex.provider.is_simulated
+        )
         if is_simulated:
             reply = f"{reply} {self.ai.compose('simulated_notice', language)}"
 
@@ -73,6 +91,8 @@ class ChatService:
             intent=intent,
             teams=[t.name for t in teams],
             prediction=prediction,
+            currency_pairs=[p.display_name for p in pairs],
+            forex_signals=signals,
             is_simulated_data=is_simulated,
             moderated=intent == Intent.MODERATED,
             responded_at=datetime.now(UTC),
@@ -83,6 +103,45 @@ class ChatService:
             return []
         by_id = {t.team_id: t for t in await self.sports.provider.list_teams()}
         return [by_id[i] for i in team_ids if i in by_id]
+
+    async def _forex_reply(
+        self, pairs: list[CurrencyPair], language: Language
+    ) -> tuple[str, list[ForexSignal], bool]:
+        if not self.forex_enabled:
+            return self.ai.compose("forex_disabled", language), [], False
+        symbols = [p.symbol for p in pairs[:3]] or [p.symbol for p in await self.forex.provider.list_pairs()]
+        try:
+            signals = [await self.forex.signal(symbol) for symbol in symbols]
+        except (ForexDataError, InsufficientForexDataError) as exc:
+            logger.warning("forex_signal_unavailable", extra={"symbols": symbols, "error": str(exc)})
+            name = pairs[0].display_name if pairs else "forex"
+            return self.ai.compose("forex_unavailable", language, pair=name), [], False
+        risk = self.ai.compose("forex_risk", language)
+        if len(signals) == 1:
+            signal = signals[0]
+            levels = ""
+            if signal.stop_loss is not None and signal.take_profit is not None:
+                levels = self.ai.compose(
+                    "forex_levels", language, stop_loss=signal.stop_loss, take_profit=signal.take_profit
+                )
+            reply = self.ai.compose(
+                "forex_signal",
+                language,
+                pair=signal.display_name,
+                direction=self.ai.format_direction(signal.direction, language),
+                strength=self.ai.format_strength(signal.strength, language),
+                price=signal.price,
+                levels=levels,
+                risk=risk,
+            )
+            return reply, signals, True
+        lines = [
+            f"{s.display_name} {self.ai.format_direction(s.direction, language, with_hint=False)} "
+            f"({self.ai.format_strength(s.strength, language)})"
+            for s in signals
+        ]
+        reply = f"{self.ai.compose('forex_overview_header', language)} " + "; ".join(lines) + f". {risk}"
+        return reply, signals, True
 
     async def _prediction_reply(self, teams: list[Team], language: Language) -> tuple[str, Prediction | None, bool]:
         if len(teams) < 2:

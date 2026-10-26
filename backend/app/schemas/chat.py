@@ -5,6 +5,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from app.schemas.forex import ForexSignal
 from app.schemas.sports import Prediction
 
 
@@ -20,6 +21,7 @@ class Intent(StrEnum):
     FIXTURES = "fixtures"
     RESULTS = "results"
     TEAM_FORM = "team_form"
+    FOREX = "forex"
     GUARANTEE_REQUEST = "guarantee_request"
     HELP = "help"
     MODERATED = "moderated"
@@ -27,7 +29,11 @@ class Intent(StrEnum):
 
 
 class ChatRequest(BaseModel):
-    message: str = Field(min_length=1, max_length=2000, examples=["Sokokali, Arsenal na Chelsea nani atashinda?"])
+    message: str = Field(
+        min_length=1,
+        max_length=2000,
+        examples=["Sokokali, Arsenal na Chelsea nani atashinda?", "EUR/USD signal"],
+    )
     viewer_id: str | None = Field(
         default=None,
         min_length=1,
@@ -44,6 +50,8 @@ class ChatResponse(BaseModel):
     intent: Intent
     teams: list[str]
     prediction: Prediction | None = None
+    currency_pairs: list[str] = Field(default_factory=list)
+    forex_signals: list[ForexSignal] = Field(default_factory=list)
     is_simulated_data: bool
     moderated: bool = False
     responded_at: datetime

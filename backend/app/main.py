@@ -13,10 +13,11 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.routes import chat, sports, system
+from app.api.routes import chat, forex, sports, system
 from app.core.config import Settings, get_settings
 from app.core.container import Container, build_container
 from app.core.logging import configure_logging
+from app.integrations.forex.base import ForexDataError
 from app.integrations.sports.base import SportsDataError
 
 logger = logging.getLogger("sokokali")
@@ -36,6 +37,8 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                 "environment": settings.environment,
                 "sports_provider": container.sports_provider.name,
                 "simulated_data": container.sports_provider.is_simulated,
+                "forex_enabled": settings.forex_enabled,
+                "forex_trade_levels_enabled": settings.forex_trade_levels_enabled,
             },
         )
         yield
@@ -44,8 +47,9 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     app = FastAPI(
         title=f"{settings.app_name} API",
         version=settings.app_version,
-        description="Sokokali, the AI sports presenter. Phase 1 backend: chat, fixtures and predictions. "
-        "Sports data is SIMULATED unless the status endpoint reports otherwise.",
+        description="Sokokali, the AI sports and markets presenter. Phase 1 backend: chat, football fixtures "
+        "and predictions, forex signals. Data is SIMULATED unless the status endpoint reports otherwise. "
+        "Forex output is educational analysis, not financial advice.",
         lifespan=lifespan,
     )
     app.state.container = container
@@ -85,9 +89,15 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         logger.warning("sports_data_unavailable", extra={"error": str(exc)})
         return JSONResponse({"detail": "Sports data is temporarily unavailable"}, status_code=503)
 
+    @app.exception_handler(ForexDataError)
+    async def forex_data_error(_: Request, exc: ForexDataError) -> JSONResponse:
+        logger.warning("forex_data_unavailable", extra={"error": str(exc)})
+        return JSONResponse({"detail": "Forex data is temporarily unavailable"}, status_code=503)
+
     app.include_router(system.router)
     app.include_router(chat.router)
     app.include_router(sports.router)
+    app.include_router(forex.router)
     return app
 
 

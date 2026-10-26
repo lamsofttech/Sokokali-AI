@@ -5,11 +5,14 @@ from datetime import UTC, datetime
 
 from app.core.config import Settings
 from app.core.rate_limit import SlidingWindowRateLimiter
+from app.integrations.forex.base import ForexDataProvider
+from app.integrations.forex.simulated import SimulatedForexProvider
 from app.integrations.sports.base import SportsDataProvider
 from app.integrations.sports.simulated import SimulatedSportsProvider
 from app.services.ai_engine import SokokaliAI
 from app.services.chat_service import ChatService
 from app.services.conversation_memory import ConversationMemory
+from app.services.forex_engine import ForexSignalEngine
 from app.services.prediction_engine import PredictionEngine
 from app.services.sports_engine import SportsService
 
@@ -20,6 +23,8 @@ class Container:
     sports_provider: SportsDataProvider
     sports: SportsService
     predictions: PredictionEngine
+    forex_provider: ForexDataProvider
+    forex: ForexSignalEngine
     ai: SokokaliAI
     memory: ConversationMemory
     chat: ChatService
@@ -33,8 +38,24 @@ def build_sports_provider(settings: Settings) -> SportsDataProvider:
     raise ValueError(f"Unsupported sports provider: {settings.sports_provider}")
 
 
-def build_container(settings: Settings, sports_provider: SportsDataProvider | None = None) -> Container:
+def build_forex_provider(settings: Settings) -> ForexDataProvider:
+    if settings.forex_provider == "simulated":
+        return SimulatedForexProvider(seed=settings.simulation_seed)
+    raise ValueError(f"Unsupported forex provider: {settings.forex_provider}")
+
+
+def build_container(
+    settings: Settings,
+    sports_provider: SportsDataProvider | None = None,
+    forex_provider: ForexDataProvider | None = None,
+) -> Container:
     provider = sports_provider or build_sports_provider(settings)
+    fx_provider = forex_provider or build_forex_provider(settings)
+    forex = ForexSignalEngine(
+        fx_provider,
+        model_version=settings.forex_signal_model_version,
+        trade_levels_enabled=settings.forex_trade_levels_enabled,
+    )
     sports = SportsService(provider)
     predictions = PredictionEngine(
         provider,
@@ -51,8 +72,10 @@ def build_container(settings: Settings, sports_provider: SportsDataProvider | No
         sports_provider=provider,
         sports=sports,
         predictions=predictions,
+        forex_provider=fx_provider,
+        forex=forex,
         ai=ai,
         memory=memory,
-        chat=ChatService(ai, sports, predictions, memory),
+        chat=ChatService(ai, sports, predictions, forex, memory, forex_enabled=settings.forex_enabled),
         chat_rate_limiter=SlidingWindowRateLimiter(settings.chat_rate_limit_per_minute, 60.0),
     )

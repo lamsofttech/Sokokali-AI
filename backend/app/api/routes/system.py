@@ -22,6 +22,8 @@ async def health(container: ContainerDep) -> HealthResponse:
 @router.get("/ready", response_model=ReadinessResponse, summary="Readiness probe")
 async def ready(container: ContainerDep) -> JSONResponse:
     checks = {"sports_provider": await container.sports_provider.health_check()}
+    if container.settings.forex_enabled:
+        checks["forex_provider"] = await container.forex_provider.health_check()
     ok = all(checks.values())
     body = ReadinessResponse(status="ready" if ok else "not_ready", checks=checks)
     return JSONResponse(body.model_dump(), status_code=200 if ok else 503)
@@ -32,6 +34,8 @@ async def service_status(container: ContainerDep) -> StatusResponse:
     s = container.settings
     provider = container.sports_provider
     provider_ok = await provider.health_check()
+    fx = container.forex_provider
+    fx_ok = await fx.health_check()
     now = datetime.now(UTC)
     return StatusResponse(
         service=s.app_name,
@@ -51,6 +55,17 @@ async def service_status(container: ContainerDep) -> StatusResponse:
                 detail=f"{provider.name} ({'SIMULATED data' if provider.is_simulated else 'live data'})",
             ),
             ComponentStatus(name="prediction_engine", status="ok", detail=container.predictions.model_version),
+            ComponentStatus(
+                name="forex_provider",
+                status="disabled" if not s.forex_enabled else "ok" if fx_ok else "down",
+                detail=f"{fx.name} ({'SIMULATED data' if fx.is_simulated else 'live data'})",
+            ),
+            ComponentStatus(
+                name="forex_signal_engine",
+                status="ok" if s.forex_enabled else "disabled",
+                detail=f"{container.forex.model_version}; trade levels "
+                f"{'ENABLED' if s.forex_trade_levels_enabled else 'disabled pending licensing review'}",
+            ),
             ComponentStatus(
                 name="conversation_memory",
                 status="ok",

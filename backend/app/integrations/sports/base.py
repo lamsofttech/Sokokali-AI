@@ -5,9 +5,10 @@ to know whether data is simulated or live.
 """
 
 from abc import ABC, abstractmethod
-from datetime import UTC, datetime
+from datetime import datetime
 
-from app.schemas.sports import DataFreshness, Fixture, MatchResult, Team
+from app.schemas.common import DataFreshness
+from app.schemas.sports import Fixture, MatchResult, Team
 
 
 class SportsDataError(Exception):
@@ -39,10 +40,4 @@ class SportsDataProvider(ABC):
         return True
 
     def freshness(self) -> DataFreshness:
-        as_of = self.data_as_of()
-        return DataFreshness(
-            source=self.name,
-            is_simulated=self.is_simulated,
-            data_as_of=as_of,
-            age_seconds=max(0.0, (datetime.now(UTC) - as_of).total_seconds()),
-        )
+        return DataFreshness.build(self.name, self.is_simulated, self.data_as_of())

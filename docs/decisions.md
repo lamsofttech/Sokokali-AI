@@ -17,3 +17,6 @@ Nothing in Phase 1 needs persistence. We add these when there is something to st
 
 ## D6: Legacy prototype archived, not deleted
 The original root-level scripts are in `legacy/prototype-v0.1/`. Their behaviour (Poisson maths, greeting replies, refusing to invent scores, CLI `demo`) is carried into the new backend.
+
+## D7: Forex signals behind a compliance boundary
+Forex is a second market next to football, built the same way: a provider interface with a simulated provider, plus a separate signal engine. Publishing entry/stop/target levels to the public may be regulated investment advice (Kenya: Capital Markets Authority), so `forex_trade_levels_enabled` defaults to false. Every forex reply carries a risk warning, and there is no broker referral or trade execution. Signals are rule-based technical analysis (EMA trend, MACD momentum, RSI) because it is explainable. We will adopt a more complex model only if Phase 3 backtesting shows it beats this baseline.

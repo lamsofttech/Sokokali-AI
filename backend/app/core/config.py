@@ -41,6 +41,15 @@ class Settings(BaseSettings):
     prediction_poisson_weight: float = Field(0.7, ge=0.0, le=1.0)
     prediction_min_history_matches: int = Field(10, ge=1)
 
+    # Forex. Only the simulated provider exists so far.
+    forex_enabled: bool = True
+    forex_provider: Literal["simulated"] = "simulated"
+    forex_signal_model_version: str = "fx-technical-0.1.0"
+    # Publishing entry/stop-loss/take-profit levels to the public may be regulated investment advice
+    # (in Kenya, the Capital Markets Authority licenses investment advisers). Keep this false until a
+    # licensing/legal review approves it.
+    forex_trade_levels_enabled: bool = False
+
     # Chat.
     chat_max_message_length: int = Field(500, ge=1, le=2000)
     conversation_history_turns: int = Field(10, ge=1, le=100)

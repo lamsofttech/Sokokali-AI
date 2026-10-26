@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.core.config import Settings
 from app.core.container import Container, build_container
+from app.integrations.forex.simulated import SimulatedForexProvider
 from app.integrations.sports.simulated import SimulatedSportsProvider
 from app.main import create_app
 
@@ -23,8 +24,15 @@ def provider() -> SimulatedSportsProvider:
 
 
 @pytest.fixture
-def container(settings: Settings, provider: SimulatedSportsProvider) -> Container:
-    return build_container(settings, sports_provider=provider)
+def forex_provider() -> SimulatedForexProvider:
+    return SimulatedForexProvider(seed=2024, now=FIXED_NOW)
+
+
+@pytest.fixture
+def container(
+    settings: Settings, provider: SimulatedSportsProvider, forex_provider: SimulatedForexProvider
+) -> Container:
+    return build_container(settings, sports_provider=provider, forex_provider=forex_provider)
 
 
 @pytest.fixture

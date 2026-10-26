@@ -5,6 +5,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from app.schemas.common import DataFreshness
+
 
 class MatchStatus(StrEnum):
     SCHEDULED = "scheduled"
@@ -32,13 +34,6 @@ class MatchResult(Fixture):
     home_goals: int = Field(ge=0)
     away_goals: int = Field(ge=0)
     status: MatchStatus = MatchStatus.FINISHED
-
-
-class DataFreshness(BaseModel):
-    source: str = Field(description="Name of the sports data provider")
-    is_simulated: bool = Field(description="True when the data is synthetic and not real-world")
-    data_as_of: datetime = Field(description="When the provider data was last refreshed")
-    age_seconds: float = Field(ge=0)
 
 
 class FixtureList(BaseModel):

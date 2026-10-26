@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from app.schemas.chat import Intent, Language
+from app.schemas.forex import SignalDirection, SignalStrength
 
 _TOKEN_RE = re.compile(r"[a-z0-9']+(?:-[a-z]+)?")
 
@@ -18,7 +19,7 @@ _SWAHILI_WORDS = frozenset(
     "na ya wa ni nani atashinda itashinda kushinda shinda mechi timu leo kesho habari karibu asante "
     "sana gani je nini lini wapi matokeo ratiba utabiri takwimu sare bao magoli dhidi zijazo mchezo "
     "michezo hujambo jambo mambo wiki hii hiyo kwa za cha katika alishinda walishinda fomu msaada "
-    "tafadhali nipe niambie ngoja zote mbili".split()
+    "tafadhali nipe niambie ngoja zote mbili uchambuzi bei sarafu nunua kununua uza kuuza faida".split()
 )
 _SHENG_WORDS = frozenset(
     "niaje manze maze wasee msee buda fiti noma rada mbogi mathe atawin ata-win itawin itakam "
@@ -29,11 +30,13 @@ _ENGLISH_WORDS = frozenset(
     "hi please can you me about today tomorrow next fixtures form how are and of is between".split()
 )
 
+_GUARANTEE_WORDS = frozenset("surebet fixed guarantee guaranteed uhakika hakika".split())
+_FOREX_WORDS = frozenset(
+    "forex fx signal signals trade trading trader pip pips pair pairs currency currencies exchange "
+    "bullish bearish sarafu nunua kununua uza kuuza".split()
+)
+
 _INTENT_KEYWORDS: list[tuple[Intent, frozenset[str]]] = [
-    (
-        Intent.GUARANTEE_REQUEST,
-        frozenset("surebet fixed guarantee guaranteed uhakika hakika".split()),
-    ),
     (
         Intent.PREDICTION,
         frozenset(
@@ -71,14 +74,74 @@ _PERSONAL_INFO_RE = re.compile(
 
 _SWAHILI_WEEKDAYS = ["Jumatatu", "Jumanne", "Jumatano", "Alhamisi", "Ijumaa", "Jumamosi", "Jumapili"]
 
+_DIRECTION_WORDS: dict[Language, dict[SignalDirection, str]] = {
+    Language.ENGLISH: {SignalDirection.BUY: "BUY", SignalDirection.SELL: "SELL", SignalDirection.NEUTRAL: "NEUTRAL"},
+    Language.KISWAHILI: {
+        SignalDirection.BUY: "KUNUNUA",
+        SignalDirection.SELL: "KUUZA",
+        SignalDirection.NEUTRAL: "HAKUNA MWELEKEO WAZI",
+    },
+    Language.SHENG: {SignalDirection.BUY: "BUY", SignalDirection.SELL: "SELL", SignalDirection.NEUTRAL: "NEUTRAL"},
+}
+_DIRECTION_HINTS = {SignalDirection.BUY: " (bullish)", SignalDirection.SELL: " (bearish)", SignalDirection.NEUTRAL: ""}
+_STRENGTH_WORDS: dict[Language, dict[SignalStrength, str]] = {
+    Language.ENGLISH: {SignalStrength.LOW: "low", SignalStrength.MEDIUM: "medium", SignalStrength.HIGH: "high"},
+    Language.KISWAHILI: {SignalStrength.LOW: "chini", SignalStrength.MEDIUM: "wastani", SignalStrength.HIGH: "juu"},
+    Language.SHENG: {SignalStrength.LOW: "low", SignalStrength.MEDIUM: "medium", SignalStrength.HIGH: "high"},
+}
+
 # Reply templates per key and language. Every value placeholder is filled from verified data.
 _TEMPLATES: dict[str, dict[Language, str]] = {
     "greeting": {
-        Language.ENGLISH: "Karibu! I'm Sokokali, your sports presenter. Ask me about fixtures, results, "
-        "team form or match predictions!",
-        Language.KISWAHILI: "Karibu sana! Mimi ni Sokokali, mtangazaji wako wa michezo. Niulize kuhusu mechi, "
-        "ratiba, matokeo au utabiri!",
-        Language.SHENG: "Niaje msee! Ni Sokokali hapa! Niulize kuhusu mechi, fixtures, results ama predictions!",
+        Language.ENGLISH: "Karibu! I'm Sokokali, your sports and markets presenter. Ask me about fixtures, "
+        "results, match predictions or forex outlooks!",
+        Language.KISWAHILI: "Karibu sana! Mimi ni Sokokali, mtangazaji wako wa michezo na masoko. Niulize kuhusu "
+        "mechi, ratiba, matokeo, utabiri au forex!",
+        Language.SHENG: "Niaje msee! Ni Sokokali hapa! Niulize kuhusu mechi, fixtures, predictions ama forex!",
+    },
+    "forex_signal": {
+        Language.ENGLISH: "{pair} hourly outlook: {direction}, signal strength {strength}. Price {price}.{levels} "
+        "{risk}",
+        Language.KISWAHILI: "Wadau! Uchambuzi wa {pair} (kila saa): {direction}, nguvu ya ishara {strength}. "
+        "Bei sasa {price}.{levels} {risk}",
+        Language.SHENG: "Wasee! {pair} kwa hourly: {direction}, signal strength {strength}. Price ni {price}."
+        "{levels} {risk}",
+    },
+    "forex_levels": {
+        Language.ENGLISH: " Stop-loss {stop_loss}, take-profit {take_profit}.",
+        Language.KISWAHILI: " Stop-loss {stop_loss}, take-profit {take_profit}.",
+        Language.SHENG: " Stop-loss {stop_loss}, take-profit {take_profit}.",
+    },
+    "forex_overview_header": {
+        Language.ENGLISH: "Forex outlook (hourly):",
+        Language.KISWAHILI: "Muhtasari wa forex (kila saa):",
+        Language.SHENG: "Forex outlook (hourly):",
+    },
+    "forex_risk": {
+        Language.ENGLISH: "Forex is high-risk: this is educational analysis, not financial advice. Never trade "
+        "money you can't afford to lose.",
+        Language.KISWAHILI: "Forex ina hatari kubwa: huu ni uchambuzi wa kielimu, si ushauri wa kifedha. Usiweke "
+        "pesa usiyoweza kupoteza.",
+        Language.SHENG: "Forex ni risky sana: hii ni analysis ya kujifunza, si financial advice. Usiweke doh "
+        "huwezi poteza.",
+    },
+    "forex_disabled": {
+        Language.ENGLISH: "Forex analysis is switched off on this stream. Ask me about sports instead!",
+        Language.KISWAHILI: "Uchambuzi wa forex umezimwa kwenye matangazo haya. Niulize kuhusu michezo!",
+        Language.SHENG: "Forex imezimwa kwa hii stream. Niulize kuhusu sports!",
+    },
+    "forex_unavailable": {
+        Language.ENGLISH: "I don't have enough verified price data for {pair} right now, so I won't guess.",
+        Language.KISWAHILI: "Sina data ya bei ya kutosha ya {pair} kwa sasa, kwa hivyo sitakisia.",
+        Language.SHENG: "Sina price data ya kutosha ya {pair} saa hii, so sitaguess.",
+    },
+    "guarantee_forex": {
+        Language.ENGLISH: "No one can guarantee forex profits. Anyone promising guaranteed returns is a red flag. "
+        "I share educational analysis only. Never trade money you can't afford to lose.",
+        Language.KISWAHILI: "Hakuna anayeweza kuhakikisha faida kwenye forex. Mtu yeyote anayeahidi faida ya "
+        "uhakika ni ishara ya hatari. Ninatoa uchambuzi wa kielimu tu. Usiweke pesa usiyoweza kupoteza.",
+        Language.SHENG: "Msee, hakuna mtu anaeza guarantee profit kwa forex. Mtu akikuahidi guaranteed returns, "
+        "hiyo ni red flag. Nashare analysis ya kujifunza tu. Usiweke doh huwezi poteza.",
     },
     "prediction": {
         Language.ENGLISH: "What a matchup! {home} vs {away} ({competition}, {kickoff}). My model gives {home} "
@@ -169,17 +232,17 @@ _TEMPLATES: dict[str, dict[Language, str]] = {
         Language.SHENG: "Kwa usalama yako, usishare number ya simu ama details zako hapa.",
     },
     "help": {
-        Language.ENGLISH: "I can share upcoming fixtures, recent results, team form and match probabilities. "
-        "Try: 'Arsenal vs Chelsea, who will win?' or 'fixtures'.",
-        Language.KISWAHILI: "Naweza kukupa ratiba ya mechi, matokeo ya karibuni, fomu ya timu na uwezekano wa "
-        "matokeo. Jaribu: 'Arsenal na Chelsea nani atashinda?' au 'ratiba'.",
-        Language.SHENG: "Naeza kukupa fixtures, results, form ya timu na chances za mechi. "
-        "Jaribu: 'Gor vs Leopards nani atawin?'",
+        Language.ENGLISH: "I can share upcoming fixtures, recent results, team form, match probabilities and "
+        "forex outlooks. Try: 'Arsenal vs Chelsea, who will win?', 'fixtures' or 'EUR/USD signal'.",
+        Language.KISWAHILI: "Naweza kukupa ratiba ya mechi, matokeo ya karibuni, fomu ya timu, uwezekano wa "
+        "matokeo na uchambuzi wa forex. Jaribu: 'Arsenal na Chelsea nani atashinda?' au 'uchambuzi wa USD/KES'.",
+        Language.SHENG: "Naeza kukupa fixtures, results, form ya timu, chances za mechi na forex signals. "
+        "Jaribu: 'Gor vs Leopards nani atawin?' ama 'EUR/USD signal'.",
     },
     "unknown": {
-        Language.ENGLISH: "Asante for the comment! Ask me about fixtures, results, team form or predictions.",
-        Language.KISWAHILI: "Asante kwa maoni yako! Niulize kuhusu ratiba, matokeo, fomu ya timu au utabiri.",
-        Language.SHENG: "Asante kwa comment yako msee! Niulize kuhusu fixtures, results, form ama predictions.",
+        Language.ENGLISH: "Asante for the comment! Ask me about fixtures, results, team form, predictions or forex.",
+        Language.KISWAHILI: "Asante kwa maoni yako! Niulize kuhusu ratiba, matokeo, fomu ya timu, utabiri au forex.",
+        Language.SHENG: "Asante kwa comment yako msee! Niulize kuhusu fixtures, results, predictions ama forex.",
     },
     "simulated_notice": {
         Language.ENGLISH: "[Simulated data, not real statistics]",
@@ -222,11 +285,16 @@ class SokokaliAI:
             return "personal_info"
         return None
 
-    def classify_intent(self, text: str, team_count: int) -> Intent:
+    def mentions_forex(self, text: str, pair_count: int = 0) -> bool:
+        return pair_count > 0 or bool(set(self.tokenize(text)) & _FOREX_WORDS)
+
+    def classify_intent(self, text: str, team_count: int, pair_count: int = 0) -> Intent:
         tokens = set(self.tokenize(text))
         lowered = text.lower()
-        if "100%" in lowered or "sure bet" in lowered or "sure win" in lowered:
-            tokens.add("guarantee")
+        if tokens & _GUARANTEE_WORDS or any(p in lowered for p in ("100%", "sure bet", "sure win", "sure profit")):
+            return Intent.GUARANTEE_REQUEST
+        if self.mentions_forex(text, pair_count):
+            return Intent.FOREX
         for intent, keywords in _INTENT_KEYWORDS:
             if tokens & keywords:
                 return intent
@@ -240,12 +308,14 @@ class SokokaliAI:
             return Intent.HELP
         return Intent.UNKNOWN
 
-    def analyze(self, text: str, team_count: int, forced_language: Language | None = None) -> MessageAnalysis:
+    def analyze(
+        self, text: str, team_count: int, forced_language: Language | None = None, pair_count: int = 0
+    ) -> MessageAnalysis:
         language = forced_language or self.detect_language(text)
         reason = self.moderate(text)
         if reason is not None:
             return MessageAnalysis(language, Intent.MODERATED, reason)
-        return MessageAnalysis(language, self.classify_intent(text, team_count))
+        return MessageAnalysis(language, self.classify_intent(text, team_count, pair_count))
 
     @staticmethod
     def compose(key: str, language: Language, **values: object) -> str:
@@ -254,6 +324,14 @@ class SokokaliAI:
     @staticmethod
     def format_percent(probability: float) -> str:
         return f"{probability:.0%}"
+
+    @staticmethod
+    def format_direction(direction: SignalDirection, language: Language, with_hint: bool = True) -> str:
+        return _DIRECTION_WORDS[language][direction] + (_DIRECTION_HINTS[direction] if with_hint else "")
+
+    @staticmethod
+    def format_strength(strength: SignalStrength, language: Language) -> str:
+        return _STRENGTH_WORDS[language][strength]
 
     @staticmethod
     def format_kickoff(kickoff: datetime, language: Language) -> str:

@@ -15,8 +15,8 @@ async def _run() -> None:
     logging.disable(logging.CRITICAL)
     container = build_container(get_settings())
     print("=" * 50)
-    print("SOKOKALI AI SYSTEM STARTED (simulated sports data)")
-    print("Type 'fixtures', 'demo' for a sample prediction, or 'exit' to quit.")
+    print("SOKOKALI AI SYSTEM STARTED (simulated sports and forex data)")
+    print("Type 'fixtures', 'demo' for a sample prediction, 'forex' for signals, or 'exit' to quit.")
     print("=" * 50)
     while True:
         try:
