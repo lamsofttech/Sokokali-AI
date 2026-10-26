@@ -39,4 +39,23 @@ Known limitations:
 - The grounding check covers percentages and decimals, not whole numbers (scores, dates, Elo).
 - Conversation memory is in-process. Redis comes later.
 
-## Next: Phase 3, sports analytics (not started; needs approval)
+## Phase 4: Dashboard (complete, awaiting approval)
+
+Built ahead of Phase 3, at the user's request, so the bot can be seen responding.
+
+Done:
+- `frontend/`: React 19 + TypeScript 5.9 + Vite 8 + Tailwind CSS 4.
+- Live chat (viewer ID, reply-language override, suggestions, engine/language/intent/simulated badges, prediction bars, forex chips).
+- System status (component health polled every 10 s, uptime, average API latency, last chat reply time), online/offline and AI-engine indicators in the header.
+- Fixtures & predictions (click a fixture to load its prediction), forex signals table, error log, "coming next" card for avatar/broadcast/gamification.
+- Typed API client with timeouts (10 s, 60 s for chat) and request events for latency and the error log; the Vite dev proxy means no CORS setup is needed.
+- `scripts/start-dev.ps1` starts the backend and dashboard and opens the browser.
+- 13 frontend tests (Vitest + Testing Library). Type-check and production build pass. Verified through the dev proxy against the running backend (status, chat, forex).
+
+Not yet built (needs backend features first):
+- Broadcast start/pause/stop controls and admin login (Phase 6), the WebSocket live feed (Phase 6), avatar preview and speech status (Phase 5), gamification milestones (Phase 6).
+
+Not yet verified:
+- No visual check in a real browser by me (no browser tool in this session), and `scripts/start-dev.ps1` was syntax-checked but not run.
+
+## Next: Phase 3 (sports analytics) or Phase 5 (avatar & voice) (not started; needs approval)

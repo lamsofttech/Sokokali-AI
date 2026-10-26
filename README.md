@@ -5,7 +5,7 @@ Sokokali is an AI-powered sports and markets presenter for a Kenyan audience. It
 - **Football:** fixtures, results, team form and probability-based match predictions.
 - **Forex:** technical-analysis signals (buy/sell/neutral) for EUR/USD, GBP/USD, USD/JPY, AUD/USD and USD/KES.
 
-**Current status: Phase 2 (conversational intelligence).** Only the backend exists so far. Chat is powered by **Anthropic Claude** when an API key is configured, with an offline rule-based engine as the fallback. All data is **simulated**: the team names and currency pairs are real, but every result, fixture and price is synthetic, and every API response and chat reply says so. No livestream, avatar, betting or trading integration exists yet.
+**Current status: Phase 4 (dashboard).** There is a FastAPI backend and a React + TypeScript admin dashboard. Chat is powered by **Anthropic Claude** when an API key is configured, with an offline rule-based engine as the fallback. All data is **simulated**: the team names and currency pairs are real, but every result, fixture and price is synthetic, and every API response and chat reply says so. No livestream, avatar, betting or trading integration exists yet.
 
 Predictions and signals are model estimates, not guarantees. They are not betting or financial advice.
 
@@ -23,6 +23,17 @@ Publishing buy/sell calls with entry, stop-loss and take-profit levels to a publ
 
 - Windows 10/11 with PowerShell
 - Python 3.12 or newer (`python --version`)
+- Node.js 20.19+ or 22.12+ for the dashboard (`node --version`)
+
+## Quick start: see the bot respond
+
+After the one-time setup below, start everything from the repository root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\start-dev.ps1
+```
+
+This opens two windows (backend on port 8000, dashboard on port 5173) and then opens http://localhost:5173 in your browser. Type a message in **Live chat**, or click a suggestion. Close the two windows to stop.
 
 ## Setup (Windows PowerShell)
 
@@ -98,6 +109,34 @@ Other messages to try: `Niaje msee! Gor vs Leopards nani atawin?`, `fixtures`, `
 
 Forex messages: `EUR/USD signal`, `Nipe uchambuzi wa forex leo`, `Niaje msee, pauni iko aje?`, `USD/KES`, `Give me guaranteed forex profit`.
 
+## Dashboard (React + TypeScript)
+
+The dashboard lives in `frontend/` (React 19, TypeScript, Vite, Tailwind CSS). One-time setup:
+
+```powershell
+cd frontend
+npm install
+```
+
+Start the backend (see "Run the API"), then in a **second** PowerShell window:
+
+```powershell
+cd frontend
+npm run dev
+```
+
+Open http://localhost:5173. The dashboard shows:
+
+- **Live chat:** send messages as a viewer. Each reply shows whether Claude or the rule-based engine answered, the language, the intent, prediction bars and forex signals.
+- **System status:** online/offline, AI engine (Claude, paused or rule-based), each backend component, uptime, average API latency and the last chat reply time.
+- **Fixtures & predictions:** click a match for its probabilities, expected goals and key factors.
+- **Forex signals:** direction, strength, price and RSI for each pair, with the risk disclaimer.
+- **Error log:** failed API requests from this browser session.
+
+The dev server forwards `/api`, `/health` and `/ready` to the backend at `http://127.0.0.1:8000`. To use a different backend, create `frontend/.env.local` with `VITE_BACKEND_URL=http://host:port`.
+
+Other commands (from `frontend/`): `npm test` (unit tests), `npm run typecheck`, `npm run build` (production build into `frontend/dist`).
+
 ## Terminal chat (no server)
 
 ```powershell
@@ -157,6 +196,16 @@ backend/
     services/prediction_engine.py    Poisson + Elo prediction model
     services/forex_engine.py    EMA/MACD/RSI/ATR signals, currency pair lookup, trade-level gate
   tests/                        pytest suite
+frontend/
+  src/
+    App.tsx                     App root
+    pages/Dashboard.tsx         Dashboard layout and live status polling
+    components/                 ChatPanel, FixturesPanel, ForexPanel, StatusPanel, ErrorLogPanel, ...
+    services/api.ts             Typed API client (timeouts, latency and error events)
+    services/types.ts           TypeScript mirrors of the backend schemas
+    hooks/                      usePolling, useRequestLog
+  vite.config.ts                Dev server, API proxy, test setup
+scripts/start-dev.ps1           Starts backend + dashboard and opens the browser
 docs/                           progress.md, decisions.md
 legacy/prototype-v0.1/          The original prototype, kept for reference
 ```
