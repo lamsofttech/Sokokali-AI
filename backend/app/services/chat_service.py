@@ -20,6 +20,7 @@ from app.services.conversation_memory import ConversationMemory, Turn
 from app.services.forex_engine import ForexSignalEngine, InsufficientForexDataError
 from app.services.llm_engine import AnthropicLLMEngine, HistoryTurn, LLMUnavailableError
 from app.services.prediction_engine import InsufficientDataError, PredictionEngine, team_form
+from app.services.speech_service import build_speech_cue
 from app.services.sports_engine import SportsService
 
 logger = logging.getLogger(__name__)
@@ -120,6 +121,7 @@ class ChatService:
             is_simulated_data=is_simulated,
             moderated=draft.intent == Intent.MODERATED,
             engine=draft.engine,
+            speech=build_speech_cue(reply, language, draft.intent, is_simulated),
             responded_at=datetime.now(UTC),
         )
 

@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.schemas.forex import ForexSignal
+from app.schemas.speech import SpeechCue
 from app.schemas.sports import Prediction
 
 
@@ -58,4 +59,5 @@ class ChatResponse(BaseModel):
     engine: Literal["llm", "rules"] = Field(
         default="rules", description="Which engine wrote the reply: Claude (llm) or the offline rule-based engine"
     )
+    speech: SpeechCue | None = Field(default=None, description="Cue for the avatar's voice and animation")
     responded_at: datetime

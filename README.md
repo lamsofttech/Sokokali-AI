@@ -5,7 +5,7 @@ Sokokali is an AI-powered sports and markets presenter for a Kenyan audience. It
 - **Football:** fixtures, results, team form and probability-based match predictions.
 - **Forex:** technical-analysis signals (buy/sell/neutral) for EUR/USD, GBP/USD, USD/JPY, AUD/USD and USD/KES.
 
-**Current status: Phases 1-4 done** (backend, Claude chat, sports analytics, dashboard). There is a FastAPI backend and a React + TypeScript admin dashboard. Chat is powered by **Anthropic Claude** when an API key is configured, with an offline rule-based engine as the fallback. By default all data is **simulated**: the team names and currency pairs are real, but every result, fixture and price is synthetic, and every API response and chat reply says so. Real football data from football-data.org can be switched on (see below). Forex prices are always simulated for now. No livestream, avatar, betting or trading integration exists yet.
+**Current status: Phases 1-5 done** (backend, Claude chat, sports analytics, dashboard, avatar & voice). There is a FastAPI backend and a React + TypeScript admin dashboard. Chat is powered by **Anthropic Claude** when an API key is configured, with an offline rule-based engine as the fallback. By default all data is **simulated**: the team names and currency pairs are real, but every result, fixture and price is synthetic, and every API response and chat reply says so. Real football data from football-data.org can be switched on (see below). Forex prices are always simulated for now. No livestream, betting or trading integration exists yet.
 
 Predictions and signals are model estimates, not guarantees. They are not betting or financial advice.
 
@@ -150,6 +150,20 @@ Open http://localhost:5173. The dashboard shows:
 - **Fixtures & predictions:** click a match for its probabilities, expected goals and key factors.
 - **Forex signals:** direction, strength, price and RSI for each pair, with the risk disclaimer.
 - **Error log:** failed API requests from this browser session.
+- **Avatar & voice:** a 3D Sokokali presenter that reads every chat reply aloud (see below).
+
+### Avatar & voice
+
+Every chat reply is spoken by the 3D presenter in the **Avatar & voice** panel, with captions and lip sync. It uses the browser's free built-in voice (Web Speech API), so there is nothing to install or pay for.
+
+- **Animations:** idle (breathing, blinking), speaking, commentary (for predictions, fixtures and forex) and celebration (for greetings, or the **Celebrate** button).
+- **Voice:** picked automatically from the reply language (Kiswahili voices for Kiswahili/Sheng, Kenyan or British English otherwise). You can choose a specific voice and speed. Settings are remembered in this browser.
+- **Kiswahili voices:** which voices exist depends on the browser and Windows. Microsoft Edge usually offers Kiswahili (Kenya) voices. The panel warns you when none is installed.
+- **One reply at a time:** replies queue up instead of talking over each other (up to 5 waiting; **Skip** and **Stop** control the queue).
+- **Fallbacks:** if the browser has no voice, the voice is muted, or the browser blocks audio (some browsers block sound until you click on the page; click **Test voice** once), Sokokali keeps "speaking" silently with captions and animation. Without WebGL, a simple 2D badge replaces the 3D presenter.
+- **Simulated data** shows as a banner on the presenter, and is not read aloud on every reply.
+
+The lip sync is approximate: browsers don't expose the speech audio, so the mouth follows the words being spoken, letter by letter, rather than the actual sound.
 
 The dev server forwards `/api`, `/health` and `/ready` to the backend at `http://127.0.0.1:8000`. To use a different backend, create `frontend/.env.local` with `VITE_BACKEND_URL=http://host:port`.
 
@@ -216,6 +230,7 @@ backend/
     services/conversation_memory.py  Per-viewer bounded history with expiry
     services/sports_engine.py   Team lookup, fixtures, results (the chat's "tools")
     services/prediction_engine.py    Poisson + Elo prediction model
+    services/speech_service.py  Speech cue per reply: speakable text, voice languages, avatar animation
     services/forex_engine.py    EMA/MACD/RSI/ATR signals, currency pair lookup, trade-level gate
   tests/                        pytest suite
 frontend/
@@ -223,6 +238,8 @@ frontend/
     App.tsx                     App root
     pages/Dashboard.tsx         Dashboard layout and live status polling
     components/                 ChatPanel, FixturesPanel, ForexPanel, StatusPanel, ErrorLogPanel, ...
+    avatar/                     3D presenter (PresenterScene.tsx), speech queue + engines (speech.ts),
+                                lip sync (lipSync.ts), useSpeech hook
     services/api.ts             Typed API client (timeouts, latency and error events)
     services/types.ts           TypeScript mirrors of the backend schemas
     hooks/                      usePolling, useRequestLog

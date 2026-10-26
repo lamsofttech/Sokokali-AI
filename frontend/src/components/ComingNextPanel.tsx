@@ -1,7 +1,6 @@
 import { Panel, Pill } from "./ui";
 
 const ITEMS = [
-  { name: "Avatar & voice", detail: "Animated 3D presenter with text-to-speech and lip sync", phase: "Phase 5" },
   { name: "Broadcast controls", detail: "Start, pause and stop the livestream simulation (admin login)", phase: "Phase 6" },
   { name: "Livestream feed", detail: "Simulated viewer comments over WebSocket", phase: "Phase 6" },
   { name: "Gamification", detail: "Trivia, prediction polls and community milestones", phase: "Phase 6" },

@@ -11,6 +11,8 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react(), tailwindcss()],
+    // three.js (~900 kB) lives in its own lazily loaded chunk with the avatar; the main bundle stays small.
+    build: { chunkSizeWarningLimit: 1000 },
     server: {
       port: 5173,
       proxy: { "/api": proxy, "/health": proxy, "/ready": proxy },

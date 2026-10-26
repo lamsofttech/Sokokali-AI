@@ -56,7 +56,7 @@ Not yet built (needs backend features first):
 - Broadcast start/pause/stop controls and admin login (Phase 6), the WebSocket live feed (Phase 6), avatar preview and speech status (Phase 5), gamification milestones (Phase 6).
 
 Not yet verified:
-- No visual check in a real browser by me (no browser tool in this session), and `scripts/start-dev.ps1` was syntax-checked but not run.
+- `scripts/start-dev.ps1` was syntax-checked but not run. (Update, Phase 5: the dashboard was later screenshotted in headless Microsoft Edge and renders correctly.)
 
 ## Phase 3: Sports analytics (complete, awaiting approval)
 
@@ -76,4 +76,23 @@ Known limitations / deferred:
 - scikit-learn / XGBoost models are not added: with one or two seasons per league, the explainable Poisson/Elo baseline comes first. Add a gradient-boosted model only if a backtest on real data shows it beats the blend.
 - Prediction history is not stored yet (needs the PostgreSQL work in Phase 7). Forex prices are still simulated only.
 
-## Next: Phase 5, avatar & voice (not started; needs approval)
+## Phase 5: Avatar & voice (complete, awaiting approval)
+
+Done:
+- Backend speech cue on every chat reply (`speech`): text cleaned for TTS (on-screen notices removed, `EUR/USD` -> `EUR USD`, scores and "vs" read naturally), BCP 47 voice languages per reply language, avatar animation per intent, simulated-data banner flag.
+- 3D presenter (React Three Fiber + three.js) built from primitives: Kenya-coloured jersey, studio desk and pitch, idle/speaking/commentary/celebration animations with smooth blending, blinking, head motion, microphone. Loaded lazily (three.js is a separate ~243 kB gzipped chunk), with a 2D fallback when WebGL is missing or the scene crashes.
+- Free text-to-speech via the Web Speech API: automatic voice choice by language, manual voice and speed (saved in localStorage), mute.
+- Speech queue: one reply at a time, max 5 waiting (oldest dropped), skip/stop, watchdog for browsers that never fire `end`, and fallback to a silent engine (captions + animation) when the voice fails or is blocked.
+- Basic lip sync from word-boundary events (per-letter mouth shapes), with a talking rhythm when the voice gives no word events.
+- Avatar & voice panel on the dashboard: live preview, captions, simulated banner, speaking/queued status, voice warnings, Test voice / Celebrate / Skip / Stop.
+- 4 new backend tests (116 total), 18 new frontend tests (32 total). Type-check and build pass. Headless Edge (SwiftShader WebGL) screenshot confirms the dashboard and 3D presenter render.
+
+Not yet verified:
+- Audio output and lip sync timing in a real browser with speakers (headless screenshots can't check sound or motion). Kiswahili voice availability depends on your browser/Windows voices.
+
+Known limitations:
+- The presenter is a demonstration character made of simple shapes; a rigged, realistic character can replace `Presenter` later without changing the speech logic.
+- Lip sync follows words and letters, not the audio waveform (the browser doesn't expose it). A paid TTS with viseme/timestamp output would allow true audio-driven lip sync.
+- Speech happens in the dashboard browser only; sending the presenter to OBS/livestream output is part of Phase 6/7.
+
+## Next: Phase 6, livestream & gamification (not started; needs approval)

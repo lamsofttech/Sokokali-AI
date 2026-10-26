@@ -48,6 +48,12 @@ export const chatReply: ChatResponse = {
   is_simulated_data: true,
   moderated: false,
   engine: "llm",
+  speech: {
+    text: "Wadau! Arsenal dhidi ya Chelsea ni mechi kali sana!",
+    voice_languages: ["sw-KE", "sw", "en-KE"],
+    animation: "commentary",
+    show_simulated_banner: true,
+  },
   responded_at: "2026-10-26T12:00:00Z",
 };
 

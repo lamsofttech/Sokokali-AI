@@ -1,5 +1,8 @@
 import { useCallback } from "react";
 
+import { useSpeech } from "../avatar/useSpeech";
+import { AvatarPanel } from "../components/AvatarPanel";
+
 import { ChatPanel } from "../components/ChatPanel";
 import { ComingNextPanel } from "../components/ComingNextPanel";
 import { ErrorLogPanel } from "../components/ErrorLogPanel";
@@ -11,11 +14,29 @@ import { Pill } from "../components/ui";
 import { usePolling } from "../hooks/usePolling";
 import { useRequestLog } from "../hooks/useRequestLog";
 import type { SokokaliApi } from "../services/api";
+import type { ChatResponse } from "../services/types";
 
 export function Dashboard({ client }: { client: SokokaliApi }) {
   const fetchStatus = useCallback(() => client.status(), [client]);
   const status = usePolling(fetchStatus, 10_000);
   const events = useRequestLog(client);
+  const speech = useSpeech();
+  const { speak } = speech;
+  const refreshStatus = status.refresh;
+  const onReply = useCallback(
+    (reply: ChatResponse) => {
+      refreshStatus();
+      if (reply.speech) {
+        speak({
+          text: reply.speech.text,
+          languages: reply.speech.voice_languages,
+          animation: reply.speech.animation,
+          simulated: reply.speech.show_simulated_banner,
+        });
+      }
+    },
+    [refreshStatus, speak],
+  );
 
   const online = status.data !== null && status.error === null;
   const ai = status.data?.components.find((c) => c.name === "ai_engine");
@@ -48,11 +69,12 @@ export function Dashboard({ client }: { client: SokokaliApi }) {
 
       <main className="mx-auto grid max-w-7xl gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <div className="space-y-4">
-          <ChatPanel client={client} onReply={status.refresh} />
+          <ChatPanel client={client} onReply={onReply} />
           <FixturesPanel client={client} />
           <ModelPanel client={client} />
         </div>
         <div className="space-y-4">
+          <AvatarPanel speech={speech} />
           <StatusPanel status={status} events={events} />
           <ForexPanel client={client} />
           <ErrorLogPanel events={events} />

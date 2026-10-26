@@ -90,6 +90,13 @@ export interface ChatRequest {
   language?: Language;
 }
 
+export interface SpeechCue {
+  text: string;
+  voice_languages: string[];
+  animation: "idle" | "speaking" | "commentary" | "celebration";
+  show_simulated_banner: boolean;
+}
+
 export interface ChatResponse {
   reply: string;
   language: Language;
@@ -101,6 +108,7 @@ export interface ChatResponse {
   is_simulated_data: boolean;
   moderated: boolean;
   engine: "llm" | "rules";
+  speech: SpeechCue | null;
   responded_at: string;
 }
 

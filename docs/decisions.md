@@ -32,3 +32,6 @@ football-data.org has a free tier covering the major European leagues, a stable 
 
 ## D11: Backtest before adding heavier models
 Every model change has to beat the current one in a walk-forward backtest (log loss first, then Brier and calibration). With one or two seasons of data per league, scikit-learn/XGBoost would mostly overfit, so they are deferred until real-data backtests justify them.
+
+## D12: Browser text-to-speech first, behind a swappable engine
+The user chose a free voice. The Web Speech API is built into every major browser, needs no account or key, and Microsoft Edge on Windows offers Kiswahili (Kenya) voices. All speech goes through a `SpeechEngine` interface (browser, silent fallback), so a paid TTS (with audio streams and viseme timings for better lip sync) can be added later as another engine. The server sends a speech cue with each reply (cleaned text, voice languages, animation), so the Phase 6 broadcast controller can drive the same avatar. The demonstration presenter is built from three.js primitives (no model files, no licensing questions) and loaded lazily, so the rest of the dashboard stays fast.
