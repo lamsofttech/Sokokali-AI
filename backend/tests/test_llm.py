@@ -225,6 +225,7 @@ def test_ungrounded_numbers() -> None:
     assert ungrounded_numbers("Arsenal 45% to win", [outcome]) == ["45%"]
     assert ungrounded_numbers("xG of 2.7", [outcome]) == ["2.7"]
     assert ungrounded_numbers("Kickoff 16:00 on 25/10", []) == []
+    assert ungrounded_numbers("52% of games went over 2.5 goals", [ToolOutcome(content='{"over_2_5_pct": 52.2}')]) == []
     assert ungrounded_numbers("Arsenal 33%", [ToolOutcome(content='{"error": "x"}', is_error=True)]) == ["33%"]
 
 

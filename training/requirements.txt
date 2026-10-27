@@ -1,0 +1,9 @@
+# Fine-tuning dependencies (install on the GPU machine, not in the backend container).
+# torch comes preinstalled on Colab / GPU images; otherwise install the CUDA build from pytorch.org first.
+transformers>=4.51,<5
+datasets>=3,<5
+peft>=0.15,<1
+trl>=0.19,<1
+bitsandbytes>=0.45,<1
+accelerate>=1.6,<2
+huggingface_hub>=0.30,<1

@@ -151,4 +151,23 @@ Not yet verified:
 - An actual TikTok LIVE Studio capture with audio (needs your TikTok account with LIVE access).
 - Headless screenshots show a black band because headless Edge reports a smaller viewport than it captures; this is not expected in a real window, but check the stage fills the window when you first open it.
 
-## Next: Google Cloud deployment, YouTube connector, realistic avatar (needs decisions)
+## Football history database and training dataset (complete)
+
+Direction from the client: the team makes the predictions; Sokokali presents them and must be an expert on football history (and markets) to help analysts decide. The model is trained on the data as worked analyses, and always checks exact numbers with tools.
+
+Done:
+- `historical_matches` table plus an ingest from football-data.co.uk: all 34 EPL seasons (1993/94 to the current season), 12,774 matches with results, half-time scores, shots, corners, fouls, cards, referees and market odds. Cached downloads, CLI (`python -m app.history.ingest`) and an admin refresh endpoint.
+- Analysis engine: all-time head-to-head, team stats by venue and seasons, form and streaks, league table for any season or date, season-by-season history. Verified against known records (Arsenal 2003/04 26-12-0 90 pts; Liverpool 2024/25 84 pts; Man United 1993/94 92 pts and 1999/00 91 pts).
+- `/api/v1/football/*` endpoints and three new Claude tools (all-time head-to-head, team history stats, league tables).
+- Grounding check now treats goal lines (0.5, 1.5, 2.5, ...) as market names, not statistics. Before this, a Claude reply mentioning "over 2.5 goals" was wrongly discarded.
+- Training dataset builder (`python -m app.training.dataset`): 1,766 grounded conversations (head-to-heads, team stats, champions, finishes, guardrails) in English/Kiswahili/Sheng, 0 rejected, with a deterministic train/eval split.
+- `training/finetune_qlora.py` (QLoRA, completion-only loss on the assistant tool-call and answer turns, push to the Hugging Face Hub, `--dry-run`) and `training/README.md`.
+- Dry run with the real Qwen3-8B and Qwen2.5-7B chat templates: 1,679 conversations become 3,215 training pairs, 0 skipped, max 3,480 tokens.
+- 12 new backend tests (160 total).
+
+Not yet done / verified:
+- Actual GPU training (no NVIDIA GPU on this machine). Run it on Colab, Google Cloud or Hugging Face per training/README.md.
+- Serving the fine-tuned model and plugging it into Sokokali next to Claude. An evaluation script for the fine-tuned model.
+- Expert picks (the team's predictions) in the database, the Analyst workspace, and forex history data for training.
+
+## Next: expert picks + analyst workspace, model serving/evaluation, Google Cloud (needs decisions)

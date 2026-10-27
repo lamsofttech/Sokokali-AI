@@ -353,9 +353,13 @@ def _streak(letters_newest_first: list[str]) -> str:
         run += 1
     if first == "W":
         unbeaten = next((i for i, x in enumerate(letters_newest_first) if x == "L"), len(letters_newest_first))
+        if run == 1 and unbeaten == 1:
+            return "won their last game"
         return f"won {run}" if unbeaten == run else f"won {run}, unbeaten in {unbeaten}"
     if first == "D":
         unbeaten = next((i for i, x in enumerate(letters_newest_first) if x == "L"), len(letters_newest_first))
-        return f"unbeaten in {unbeaten}"
+        return "drew their last game" if unbeaten == 1 else f"unbeaten in {unbeaten}"
     winless = next((i for i, x in enumerate(letters_newest_first) if x == "W"), len(letters_newest_first))
+    if run == 1 and winless == 1:
+        return "lost their last game"
     return f"lost {run}" if winless == run else f"lost {run}, without a win in {winless}"

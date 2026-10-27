@@ -79,6 +79,8 @@ class HistoryTurn:
 
 
 _PERCENT_RE = re.compile(r"(\d{1,3}(?:\.\d+)?)\s?%")
+# Goal lines are names of markets ("over 2.5 goals"), not statistics, so they never need a source.
+_GOAL_LINES = {0.5, 1.5, 2.5, 3.5, 4.5}
 _DECIMAL_RE = re.compile(r"(?<![\d.])(\d+\.\d+)(?![\d.])")
 
 
@@ -112,6 +114,8 @@ def ungrounded_numbers(reply: str, outcomes: list[ToolOutcome]) -> list[str]:
     for match in _DECIMAL_RE.finditer(without_percents):
         text = match.group(1)
         number = float(text)
+        if number in _GOAL_LINES:
+            continue
         tolerance = 0.5 * 10 ** -len(text.split(".")[1]) + 1e-9
         if not any(abs(number - v) <= tolerance for _, v in values):
             problems.append(text)

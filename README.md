@@ -85,6 +85,20 @@ Each Claude reply is a paid API call (model `claude-opus-5-5`, effort `low`). Ch
 
 Sokokali downloads the current and previous season once, then reuses the data for 5 minutes (`SOKOKALI_SPORTS_CACHE_TTL_SECONDS`). Requests have a 10 s timeout and up to 3 attempts with backoff. If a refresh fails, the last good data keeps being served and the status shows `degraded`. A bad key fails immediately rather than retrying. The Kenyan Premier League is not on football-data.org's free tier, so with real data only the configured competitions are covered.
 
+## Football history (Premier League since 1993/94)
+
+Load every Premier League season into the database (with Docker running):
+
+```powershell
+docker compose exec backend python -m app.history.ingest
+```
+
+Then ask through the API: `/api/v1/football/head-to-head?team_a=Arsenal&team_b=Chelsea`, `/api/v1/football/teams/Liverpool/stats?venue=home&seasons=3`, `/api/v1/football/table?season=2003/04`, `/api/v1/football/teams/Everton/history`. Claude uses the same data through tools when viewers ask about history. Data: football-data.co.uk.
+
+## Training Sokokali's own model
+
+See [training/README.md](training/README.md). In short: build a grounded multilingual dataset from the history database, fine-tune an open model (default Qwen3-8B) with QLoRA on a GPU, and keep it private on the Hugging Face Hub.
+
 ## Model accuracy (backtesting)
 
 From the `backend` folder:
@@ -282,6 +296,9 @@ frontend/Dockerfile, nginx.conf  Dashboard image (nginx serves it and proxies AP
 docker-compose.yml              Full local stack: frontend, backend, PostgreSQL, Redis
 .github/workflows/ci.yml        CI: tests, type checks, security audits, Docker build + smoke test
 docs/deployment.md              Running with Docker, monitoring, Google Cloud plan
+backend/app/history/            Historical Premier League database: ingest, team names, analysis engine
+backend/app/training/dataset.py Builds the fine-tuning dataset from the historical data
+training/                       QLoRA fine-tuning script and guide (Hugging Face)
     services/forex_engine.py    EMA/MACD/RSI/ATR signals, currency pair lookup, trade-level gate
   tests/                        pytest suite
 frontend/
