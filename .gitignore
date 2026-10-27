@@ -22,3 +22,6 @@ dist/
 .idea/
 Thumbs.db
 .DS_Store
+
+# Downloaded datasets (re-creatable with python -m app.history.ingest)
+data/

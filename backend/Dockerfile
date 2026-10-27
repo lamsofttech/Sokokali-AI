@@ -14,7 +14,7 @@ RUN pip install -r requirements.txt
 COPY app ./app
 
 # Run as an unprivileged user.
-RUN useradd --create-home --uid 10001 sokokali
+RUN useradd --create-home --uid 10001 sokokali && mkdir -p /app/data && chown sokokali /app/data
 USER sokokali
 
 EXPOSE 8000

@@ -14,6 +14,7 @@ from app.core.config import Settings
 from app.core.metrics import Metrics
 from app.core.rate_limit import RedisRateLimiter, SlidingWindowRateLimiter
 from app.database.storage import Storage
+from app.history.service import HistoryService
 from app.integrations.forex.base import ForexDataProvider
 from app.integrations.forex.simulated import SimulatedForexProvider
 from app.integrations.live.base import LiveEventSource
@@ -54,6 +55,7 @@ class Container:
     gamification: GamificationEngine
     broadcast: BroadcastController
     metrics: Metrics
+    history: HistoryService
     llm: AnthropicLLMEngine | None = None
     storage: Storage | None = None
     redis: Redis | None = None
@@ -71,12 +73,14 @@ class Container:
                 if attempt == 5:
                     logger.error("database_unavailable", extra={"error": str(exc), "effect": "running without persistence"})
                     self.storage = None
+                    self.history.storage = None
                     self.predictions.on_prediction = None
                     self.broadcast.on_say = None
                     self.broadcast.on_gamification_state = None
                     return
                 logger.warning("database_connect_retry", extra={"attempt": attempt, "error": str(exc)})
                 await asyncio.sleep(attempt)
+        await self.history.load()
         state = await self.storage.load_gamification()
         if state:
             self.gamification.import_state(state)
@@ -244,6 +248,9 @@ def build_container(
     broadcast.on_event = lambda event: metrics.live_events.labels(event.kind.value).inc()
 
     storage = Storage(settings.database_url.get_secret_value()) if settings.database_url else None
+    history = HistoryService(storage)
+    if llm is not None:
+        llm.executor.history = history
     if storage is not None:
         predictions.on_prediction = storage.save_prediction
         broadcast.on_say = storage.log_broadcast
@@ -276,6 +283,7 @@ def build_container(
         llm=llm,
         chat_rate_limiter=rate_limiter,
         metrics=metrics,
+        history=history,
         storage=storage,
         redis=redis,
     )

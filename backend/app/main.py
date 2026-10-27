@@ -13,7 +13,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.routes import broadcast, chat, forex, sports, system
+from app.api.routes import broadcast, chat, football, forex, sports, system
 from app.core.config import Settings, get_settings
 from app.core.container import Container, build_container
 from app.core.logging import configure_logging
@@ -113,6 +113,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     app.include_router(sports.router)
     app.include_router(forex.router)
     app.include_router(broadcast.router)
+    app.include_router(football.router)
     return app
 
 

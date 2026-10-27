@@ -1,9 +1,9 @@
 """Database tables (SQLAlchemy 2.0). Created on startup; see docs/deployment.md for migrations."""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Date, DateTime, Float, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -56,3 +56,42 @@ class GamificationSnapshot(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     state: Mapped[dict[str, Any]] = mapped_column(JSON)
+
+
+class HistoricalMatch(Base):
+    """One finished match from the historical football database (source: football-data.co.uk)."""
+
+    __tablename__ = "historical_matches"
+    __table_args__ = (UniqueConstraint("league", "match_date", "home_team", "away_team", name="uq_historical_match"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    league: Mapped[str] = mapped_column(String(10), index=True)  # football-data code, e.g. E0 = Premier League
+    season: Mapped[str] = mapped_column(String(4), index=True)  # e.g. "2425" = 2024/25
+    match_date: Mapped[date] = mapped_column(Date, index=True)
+    kickoff_time: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    home_team: Mapped[str] = mapped_column(String(50), index=True)
+    away_team: Mapped[str] = mapped_column(String(50), index=True)
+    home_goals: Mapped[int] = mapped_column(Integer)
+    away_goals: Mapped[int] = mapped_column(Integer)
+    result: Mapped[str] = mapped_column(String(1))  # H, D, A
+    ht_home_goals: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ht_away_goals: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    referee: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    home_shots: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    away_shots: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    home_shots_on_target: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    away_shots_on_target: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    home_corners: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    away_corners: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    home_fouls: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    away_fouls: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    home_yellows: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    away_yellows: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    home_reds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    away_reds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Market average pre-match odds (decimal); None where the source has none.
+    odds_home: Mapped[float | None] = mapped_column(Float, nullable=True)
+    odds_draw: Mapped[float | None] = mapped_column(Float, nullable=True)
+    odds_away: Mapped[float | None] = mapped_column(Float, nullable=True)
+    odds_over_25: Mapped[float | None] = mapped_column(Float, nullable=True)
+    odds_under_25: Mapped[float | None] = mapped_column(Float, nullable=True)

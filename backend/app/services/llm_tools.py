@@ -12,6 +12,8 @@ from typing import Any
 
 from app.integrations.forex.base import ForexDataError
 from app.integrations.sports.base import SportsDataError
+from app.history.ingest import parse_season
+from app.history.service import HistoryService, HistoryUnavailableError, UnknownTeamError
 from app.schemas.forex import CurrencyPair, ForexSignal
 from app.schemas.sports import Prediction, Team
 from app.services.forex_engine import ForexSignalEngine, InsufficientForexDataError, PairNotFoundError
@@ -21,7 +23,7 @@ from app.services.sports_engine import SportsService
 logger = logging.getLogger(__name__)
 
 
-def _tool(name: str, description: str, properties: dict[str, dict[str, str]]) -> dict[str, Any]:
+def _tool(name: str, description: str, properties: dict[str, dict[str, Any]]) -> dict[str, Any]:
     return {
         "name": name,
         "description": description,
@@ -63,6 +65,33 @@ SPORTS_TOOLS = [
     ),
 ]
 
+HISTORY_TOOLS = [
+    _tool(
+        "get_head_to_head_history",
+        "All-time Premier League head-to-head between two clubs since 1993/94: wins, draws, goals, over 2.5 and "
+        "both-teams-to-score rates, home/away records, biggest wins and the most recent meetings. Use for questions "
+        "about the history or rivalry between two teams.",
+        {"team_a": _TEAM, "team_b": _TEAM},
+    ),
+    _tool(
+        "get_team_history_stats",
+        "A club's Premier League statistics over its most recent seasons: record, points per game, goals for "
+        "and against, clean sheets, both-teams-to-score and over 2.5 rates, shots, corners, cards, form and "
+        "current streak. Use for questions about how a team usually performs, at home or away.",
+        {
+            "team": _TEAM,
+            "venue": {"type": "string", "enum": ["all", "home", "away"], "description": "Which matches to count"},
+            "seasons": {"type": "integer", "description": "How many recent seasons to include (1-10)"},
+        },
+    ),
+    _tool(
+        "get_league_table_history",
+        "The Premier League table for a season (any season since 1993/94). Use for questions about final "
+        "positions, title races or relegation in a past or the current season.",
+        {"season": {"type": "string", "description": "Season like '2024/25', or an empty string for the latest"}},
+    ),
+]
+
 FOREX_TOOL = _tool(
     "get_forex_signal",
     "Get the hourly technical-analysis signal (buy/sell/neutral, strength, price, indicators) for a currency "
@@ -72,7 +101,8 @@ FOREX_TOOL = _tool(
 
 
 def tool_definitions(forex_enabled: bool) -> list[dict[str, Any]]:
-    return [*SPORTS_TOOLS, FOREX_TOOL] if forex_enabled else list(SPORTS_TOOLS)
+    tools = [*SPORTS_TOOLS, *HISTORY_TOOLS]
+    return [*tools, FOREX_TOOL] if forex_enabled else tools
 
 
 @dataclass
@@ -107,6 +137,7 @@ class ToolExecutor:
         self.predictions = predictions
         self.forex = forex
         self.forex_enabled = forex_enabled
+        self.history: HistoryService | None = None  # set by the container once storage exists
 
     async def execute(self, name: str, tool_input: dict[str, Any]) -> ToolOutcome:
         handlers = {
@@ -115,6 +146,9 @@ class ToolExecutor:
             "get_team_form": self._team_form,
             "get_head_to_head": self._head_to_head,
             "get_forex_signal": self._forex_signal,
+            "get_head_to_head_history": self._h2h_history,
+            "get_team_history_stats": self._team_history_stats,
+            "get_league_table_history": self._league_table_history,
         }
         handler = handlers.get(name)
         if handler is None or (name == "get_forex_signal" and not self.forex_enabled):
@@ -124,6 +158,10 @@ class ToolExecutor:
             return await handler(**args)
         except TypeError:
             return _error(f"Invalid arguments for {name}")
+        except (UnknownTeamError, ValueError) as exc:
+            return _error(f"Unknown team or season '{exc}' in the historical data")
+        except HistoryUnavailableError:
+            return _error("Historical match data is not loaded")
         except (SportsDataError, ForexDataError, InsufficientDataError, InsufficientForexDataError) as exc:
             logger.warning("tool_data_unavailable", extra={"tool": name, "error": str(exc)})
             return _error("Data is temporarily unavailable")
@@ -249,6 +287,25 @@ class ToolExecutor:
             teams=[a, b],
             used_sports_data=True,
         )
+
+    def _history_service(self) -> HistoryService:
+        if self.history is None or not self.history.loaded:
+            raise HistoryUnavailableError
+        return self.history
+
+    async def _h2h_history(self, team_a: str = "", team_b: str = "") -> ToolOutcome:
+        h2h = self._history_service().head_to_head(team_a, team_b, recent=6)
+        return _ok({**h2h.model_dump(mode="json"), "competition": "Premier League", "data_is_simulated": False})
+
+    async def _team_history_stats(self, team: str = "", venue: str = "all", seasons: str = "3") -> ToolOutcome:
+        n = max(1, min(10, int(seasons) if seasons.isdigit() else 3))
+        stats = self._history_service().team_stats(team, seasons=n, venue=venue if venue in ("home", "away") else "all")
+        return _ok({**stats.model_dump(mode="json"), "competition": "Premier League", "data_is_simulated": False})
+
+    async def _league_table_history(self, season: str = "") -> ToolOutcome:
+        table = self._history_service().league_table(parse_season(season) if season else None)
+        data = table.model_dump(mode="json")
+        return _ok({**data, "competition": "Premier League", "data_is_simulated": False})
 
     async def _forex_signal(self, pair: str = "") -> ToolOutcome:
         if pair:
