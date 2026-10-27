@@ -13,10 +13,11 @@
 import asyncio
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
+from app.core.background import spawn
 from app.integrations.live.base import LiveEventSource, LiveSourceUnavailableError
 from app.schemas.chat import ChatRequest, Language
 from app.schemas.live import BroadcastState, BroadcastStatus, LiveEvent, LiveEventKind
@@ -90,6 +91,12 @@ class BroadcastController:
         self.last_error: str | None = None
         self._segment_index = 0
         self._tasks: list[asyncio.Task[None]] = []
+        # Optional hooks (set by the container): storage and metrics.
+        self.on_say: Callable[[dict[str, Any]], Awaitable[None]] | None = None
+        self.on_gamification_state: Callable[[dict[str, Any]], Awaitable[None]] | None = None
+        self.on_event: Callable[[LiveEvent], None] | None = None
+        self.snapshot_seconds = 30.0
+        self._last_snapshot = 0.0
 
     # -- control ---------------------------------------------------------------
 
@@ -109,6 +116,7 @@ class BroadcastController:
         self._tasks = [asyncio.create_task(self._run_source(), name="live-source")]
         if self.autoloop:
             self._tasks.append(asyncio.create_task(self._run_loop(), name="broadcast-loop"))
+            self._tasks.append(asyncio.create_task(self._run_snapshots(), name="gamification-snapshots"))
         logger.info("broadcast_started", extra={"source": self.source.name})
         self._publish_state()
         return self.status()
@@ -139,8 +147,18 @@ class BroadcastController:
         self.pipeline.clear()
         self.gamification.close_trivia()
         self.gamification.close_poll()
+        await self.save_gamification()
         self._publish_state()
         return self.status()
+
+    async def save_gamification(self) -> None:
+        if self.on_gamification_state is not None:
+            await self.on_gamification_state(self.gamification.export_state())
+
+    async def _run_snapshots(self) -> None:
+        while True:
+            await asyncio.sleep(self.snapshot_seconds)
+            await self.save_gamification()
 
     def status(self) -> BroadcastStatus:
         now = self.clock()
@@ -179,6 +197,8 @@ class BroadcastController:
     async def handle_event(self, event: LiveEvent) -> dict[str, Any]:
         """Process one incoming event (from the source, or injected through the API)."""
         self.events_received += 1
+        if self.on_event is not None:
+            self.on_event(event)
         if self.pipeline.is_duplicate(event):
             self.pipeline.rejected["duplicate"] += 1
             return {"accepted": False, "reason": "duplicate"}
@@ -190,8 +210,10 @@ class BroadcastController:
         self.hub.publish("event", {**event.model_dump(mode="json"), **result})
         for update in updates:
             self.hub.publish("game", update.model_dump(mode="json"))
-            if update.kind == "milestone" and self.state == BroadcastState.RUNNING:
-                self._say(update.message, Language.ENGLISH, AvatarAnimation.CELEBRATION, "milestone")
+            if update.kind == "milestone":
+                spawn(self.save_gamification(), "save_gamification")  # milestones are worth keeping at once
+                if self.state == BroadcastState.RUNNING:
+                    self._say(update.message, Language.ENGLISH, AvatarAnimation.CELEBRATION, "milestone")
         return result
 
     async def _run_source(self) -> None:
@@ -245,6 +267,11 @@ class BroadcastController:
         elif now - self.last_activity >= self.segment_interval_seconds:
             await self._segment(now)
 
+    def _publish_say(self, data: dict[str, Any]) -> None:
+        self.hub.publish("say", data)
+        if self.on_say is not None:
+            spawn(self.on_say(data), "log_broadcast")
+
     def _speaking(self, text: str) -> None:
         now = self.clock()
         self.speaking_until = now + len(text.split()) / self.words_per_second + self.min_gap_seconds
@@ -255,8 +282,7 @@ class BroadcastController:
             ChatRequest(message=(event.text or "")[:500], viewer_id=f"{event.platform}:{event.viewer_id}")
         )
         self.replies += 1
-        self.hub.publish(
-            "say",
+        self._publish_say(
             {
                 "source": "viewer",
                 "viewer_name": event.viewer_name,
@@ -275,7 +301,7 @@ class BroadcastController:
             animation=animation,
             show_simulated_banner=simulated,
         )
-        self.hub.publish("say", {"source": source, "text": text, "speech": cue.model_dump(mode="json")})
+        self._publish_say({"source": source, "text": text, "speech": cue.model_dump(mode="json")})
         self._speaking(cue.text)
 
     async def run_segment(self, segment: str) -> None:
@@ -331,8 +357,7 @@ class BroadcastController:
         else:
             message = "What are the upcoming fixtures?"
         response = await self.chat.handle(ChatRequest(message=message, language=language))
-        self.hub.publish(
-            "say",
+        self._publish_say(
             {
                 "source": segment,
                 "text": response.reply,

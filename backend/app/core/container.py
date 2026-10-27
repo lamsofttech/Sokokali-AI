@@ -1,14 +1,19 @@
 """Builds and holds the application's service graph (simple dependency injection)."""
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
 import anthropic
+from redis.asyncio import Redis
 
+from app.core.background import drain
 from app.core.config import Settings
-from app.core.rate_limit import SlidingWindowRateLimiter
+from app.core.metrics import Metrics
+from app.core.rate_limit import RedisRateLimiter, SlidingWindowRateLimiter
+from app.database.storage import Storage
 from app.integrations.forex.base import ForexDataProvider
 from app.integrations.forex.simulated import SimulatedForexProvider
 from app.integrations.live.base import LiveEventSource
@@ -43,19 +48,50 @@ class Container:
     ai: SokokaliAI
     memory: ConversationMemory
     chat: ChatService
-    chat_rate_limiter: SlidingWindowRateLimiter
+    chat_rate_limiter: SlidingWindowRateLimiter | RedisRateLimiter
     hub: LiveHub
     gamification: GamificationEngine
     broadcast: BroadcastController
+    metrics: Metrics
     llm: AnthropicLLMEngine | None = None
+    storage: Storage | None = None
+    redis: Redis | None = None
     started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
+    async def startup(self) -> None:
+        """Connect to the database (retrying briefly while it boots) and restore saved state."""
+        if self.storage is None:
+            return
+        for attempt in range(1, 6):
+            try:
+                await self.storage.init()
+                break
+            except Exception as exc:  # noqa: BLE001 - driver-specific connection errors
+                if attempt == 5:
+                    logger.error("database_unavailable", extra={"error": str(exc), "effect": "running without persistence"})
+                    self.storage = None
+                    self.predictions.on_prediction = None
+                    self.broadcast.on_say = None
+                    self.broadcast.on_gamification_state = None
+                    return
+                logger.warning("database_connect_retry", extra={"attempt": attempt, "error": str(exc)})
+                await asyncio.sleep(attempt)
+        state = await self.storage.load_gamification()
+        if state:
+            self.gamification.import_state(state)
+            logger.info("gamification_restored", extra={"viewers": len(state.get("viewers", []))})
+
     async def aclose(self) -> None:
-        await self.broadcast.stop()
+        await self.broadcast.stop()  # also saves the gamification snapshot
+        await drain()  # pending database writes
         if self.llm is not None:
             await self.llm.aclose()
         await self.sports_provider.aclose()
         await self.forex_provider.aclose()
+        if self.storage is not None:
+            await self.storage.aclose()
+        if self.redis is not None:
+            await self.redis.aclose()
 
 
 logger = logging.getLogger(__name__)
@@ -192,6 +228,28 @@ def build_container(
         poll_seconds=settings.live_poll_seconds,
         autoloop=autoloop,
     )
+    metrics = Metrics()
+    chat.metrics = metrics
+    broadcast.snapshot_seconds = settings.gamification_snapshot_seconds
+    broadcast.on_event = lambda event: metrics.live_events.labels(event.kind.value).inc()
+
+    storage = Storage(settings.database_url.get_secret_value()) if settings.database_url else None
+    if storage is not None:
+        predictions.on_prediction = storage.save_prediction
+        broadcast.on_say = storage.log_broadcast
+        broadcast.on_gamification_state = storage.save_gamification
+
+    redis = (
+        Redis.from_url(settings.redis_url.get_secret_value(), socket_timeout=2, socket_connect_timeout=2)
+        if settings.redis_url
+        else None
+    )
+    rate_limiter: SlidingWindowRateLimiter | RedisRateLimiter = (
+        RedisRateLimiter(redis, settings.chat_rate_limit_per_minute, 60.0)
+        if redis is not None
+        else SlidingWindowRateLimiter(settings.chat_rate_limit_per_minute, 60.0)
+    )
+
     return Container(
         settings=settings,
         sports_provider=provider,
@@ -206,5 +264,8 @@ def build_container(
         gamification=gamification,
         broadcast=broadcast,
         llm=llm,
-        chat_rate_limiter=SlidingWindowRateLimiter(settings.chat_rate_limit_per_minute, 60.0),
+        chat_rate_limiter=rate_limiter,
+        metrics=metrics,
+        storage=storage,
+        redis=redis,
     )

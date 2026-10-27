@@ -5,7 +5,7 @@ Sokokali is an AI-powered sports and markets presenter for a Kenyan audience. It
 - **Football:** fixtures, results, team form and probability-based match predictions.
 - **Forex:** technical-analysis signals (buy/sell/neutral) for EUR/USD, GBP/USD, USD/JPY, AUD/USD and USD/KES.
 
-**Current status: Phases 1-6 done** (backend, Claude chat, sports analytics, dashboard, avatar & voice, simulated livestream & gamification). There is a FastAPI backend and a React + TypeScript admin dashboard. Chat is powered by **Anthropic Claude** when an API key is configured, with an offline rule-based engine as the fallback. By default all data is **simulated**: the team names and currency pairs are real, but every result, fixture and price is synthetic, and every API response and chat reply says so. Real football data from football-data.org can be switched on (see below). Forex prices are always simulated for now. The livestream runs on a **simulated audience**: there is no real platform connection yet (TikTok has no officially authorized live-comments API; see below). There is no betting or trading integration.
+**Current status: Phases 1-7 done** (backend, Claude chat, sports analytics, dashboard, avatar & voice, simulated livestream & gamification, Docker deployment with PostgreSQL/Redis, CI). There is a FastAPI backend and a React + TypeScript admin dashboard. Chat is powered by **Anthropic Claude** when an API key is configured, with an offline rule-based engine as the fallback. By default all data is **simulated**: the team names and currency pairs are real, but every result, fixture and price is synthetic, and every API response and chat reply says so. Real football data from football-data.org can be switched on (see below). Forex prices are always simulated for now. The livestream runs on a **simulated audience**: there is no real platform connection yet (TikTok has no officially authorized live-comments API; see below). There is no betting or trading integration.
 
 Predictions and signals are model estimates, not guarantees. They are not betting or financial advice.
 
@@ -25,7 +25,17 @@ Publishing buy/sell calls with entry, stop-loss and take-profit levels to a publ
 - Python 3.12 or newer (`python --version`)
 - Node.js 20.19+ or 22.12+ for the dashboard (`node --version`)
 
-## Quick start: see the bot respond
+## Quick start with Docker (recommended)
+
+With Docker Desktop running, from the repository root:
+
+```powershell
+docker compose up -d --build
+```
+
+Open http://localhost:8080. This starts the dashboard, the backend, PostgreSQL (predictions, everything said on air, and engagement state survive restarts) and Redis. Stop with `docker compose down`. See [docs/deployment.md](docs/deployment.md) for logs, configuration, monitoring and the Google Cloud plan.
+
+## Quick start without Docker
 
 After the one-time setup below, start everything from the repository root:
 
@@ -217,6 +227,9 @@ From the `backend` folder:
 | POST | `/api/v1/live/events` | Inject a live event, e.g. from a platform webhook (admin) |
 | GET | `/api/v1/gamification/status` | Milestones, trivia, poll, leaderboard, cosmetics |
 | WS | `/ws/live` | Live feed: events, replies, game updates, state (admin token as `?token=`) |
+| GET | `/api/v1/history/predictions` | Stored predictions with model versions (admin; needs a database) |
+| GET | `/api/v1/history/broadcast` | Everything Sokokali said on air (admin; needs a database) |
+| GET | `/metrics` | Prometheus metrics (admin outside development) |
 | GET | `/api/v1/forex/pairs` | Supported currency pairs |
 | GET | `/api/v1/forex/signals` | Signals for every pair |
 | GET | `/api/v1/forex/signals/{symbol}` | Signal for one pair, e.g. `EURUSD` or `EUR-USD` |
@@ -259,6 +272,13 @@ backend/
     services/compliance.py      Responsible-gambling reminders (betting boundary)
     integrations/live/          Live source interface, simulated audience, TikTok placeholder
     core/security.py            Admin token checks
+    core/metrics.py             Prometheus metrics (/metrics)
+    database/                   SQLAlchemy models and storage (PostgreSQL; SQLite in tests)
+  Dockerfile
+frontend/Dockerfile, nginx.conf  Dashboard image (nginx serves it and proxies API/WebSocket)
+docker-compose.yml              Full local stack: frontend, backend, PostgreSQL, Redis
+.github/workflows/ci.yml        CI: tests, type checks, security audits, Docker build + smoke test
+docs/deployment.md              Running with Docker, monitoring, Google Cloud plan
     services/forex_engine.py    EMA/MACD/RSI/ATR signals, currency pair lookup, trade-level gate
   tests/                        pytest suite
 frontend/

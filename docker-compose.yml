@@ -1,0 +1,64 @@
+# Sokokali, the full stack on one machine:  docker compose up -d --build
+# Dashboard: http://localhost:8080   API docs: http://localhost:8080/docs
+# Ports are bound to 127.0.0.1 so nothing is exposed to your network.
+name: sokokali
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: sokokali
+      POSTGRES_USER: sokokali
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sokokali-local-only}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sokokali -d sokokali"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    env_file:
+      - path: .env  # your keys and settings (optional; see .env.example)
+        required: false
+    environment:
+      SOKOKALI_DATABASE_URL: postgresql+asyncpg://sokokali:${POSTGRES_PASSWORD:-sokokali-local-only}@postgres:5432/sokokali
+      SOKOKALI_REDIS_URL: redis://redis:6379/0
+      SOKOKALI_CORS_ORIGINS: '["http://localhost:8080","http://127.0.0.1:8080"]'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8000:8000"
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:8080"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:

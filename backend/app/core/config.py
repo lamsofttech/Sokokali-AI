@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "Sokokali"
-    app_version: str = "0.6.0"
+    app_version: str = "0.7.0"
     environment: Literal["development", "test", "staging", "production"] = "development"
 
     log_level: str = "INFO"
@@ -74,6 +74,13 @@ class Settings(BaseSettings):
     llm_max_tool_rounds: int = Field(4, ge=1, le=10)
     llm_history_turns: int = Field(6, ge=0, le=50)
 
+    # Persistence (Phase 7). Both optional: without them Sokokali runs fully in memory.
+    # e.g. postgresql+asyncpg://user:password@host:5432/sokokali  (sqlite+aiosqlite:///./sokokali.db also works)
+    database_url: SecretStr | None = None
+    # e.g. redis://localhost:6379/0 - shared rate limits across restarts and replicas
+    redis_url: SecretStr | None = None
+    gamification_snapshot_seconds: float = Field(30, ge=5)
+
     # Admin access for broadcast controls. Required outside development/test; send it as
     # "Authorization: Bearer <token>" (or ?token=<token> on the WebSocket).
     admin_token: SecretStr | None = None
@@ -102,7 +109,7 @@ class Settings(BaseSettings):
     conversation_ttl_seconds: int = Field(1800, ge=60)
     chat_rate_limit_per_minute: int = Field(30, ge=1)
 
-    @field_validator("admin_token", "anthropic_api_key", "football_data_api_key", mode="before")
+    @field_validator("admin_token", "anthropic_api_key", "football_data_api_key", "database_url", "redis_url", mode="before")
     @classmethod
     def _blank_secret_is_unset(cls, value: object) -> object:
         # "KEY=" in .env means "not configured", not "the empty string is the secret".

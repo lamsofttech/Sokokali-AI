@@ -11,9 +11,9 @@ def client_key(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-def enforce_chat_rate_limit(request: Request) -> None:
+async def enforce_chat_rate_limit(request: Request) -> None:
     container = get_container(request)
-    if not container.chat_rate_limiter.allow(client_key(request)):
+    if not await container.chat_rate_limiter.check(client_key(request)):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many chat messages. Please slow down.",

@@ -47,3 +47,6 @@ The broadcast controller decides what is said and when, and estimates speaking t
 
 ## D16: Admin token, fail closed
 Control endpoints and the live feed (which shows viewer comments) need an admin token. In development they are open, for zero-setup local use. Everywhere else they refuse all requests until `SOKOKALI_ADMIN_TOKEN` is set. A single shared token is enough for one operator; real user accounts can come with the cloud deployment if more operators are needed.
+
+## D17: Docker Compose locally, managed services on Google Cloud
+Locally, one `docker compose up` runs the same containers that will run in the cloud, with PostgreSQL and Redis as containers. On Google Cloud these become Cloud Run (one always-on backend instance, because the live show is stateful), Cloud SQL and Memorystore, with secrets in Secret Manager. Persistence and Redis are optional in the code, so tests and quick local runs need neither. Database writes are fire-and-forget and failure-tolerant: losing a log line is better than interrupting the broadcast.

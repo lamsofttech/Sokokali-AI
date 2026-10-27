@@ -8,7 +8,7 @@ from app.main import create_app
 def test_health(client: TestClient) -> None:
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "service": "Sokokali", "version": "0.6.0"}
+    assert response.json() == {"status": "ok", "service": "Sokokali", "version": "0.7.0"}
     assert "X-Request-ID" in response.headers
 
 

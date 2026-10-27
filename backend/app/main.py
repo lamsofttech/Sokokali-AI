@@ -43,6 +43,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                 "llm": container.llm.model if container.llm else None,
             },
         )
+        await container.startup()
         if settings.admin_token is None:
             if admin_token_required(settings):
                 logger.error("admin_token_missing", extra={"effect": "admin endpoints disabled until SOKOKALI_ADMIN_TOKEN is set"})
@@ -78,8 +79,13 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         except Exception:
             logger.exception("request_failed", extra={"request_id": request_id, "path": request.url.path})
             response = JSONResponse({"detail": "Internal server error", "request_id": request_id}, status_code=500)
-        duration_ms = round((time.perf_counter() - start) * 1000, 2)
+        elapsed = time.perf_counter() - start
+        duration_ms = round(elapsed * 1000, 2)
         response.headers["X-Request-ID"] = request_id
+        # Label by route template ("/api/v1/predictions/{match_id}"), not raw path, to keep metrics bounded.
+        route = getattr(request.scope.get("route"), "path", "unmatched")
+        container.metrics.http_requests.labels(request.method, route, str(response.status_code)).inc()
+        container.metrics.http_latency.labels(route).observe(elapsed)
         logger.info(
             "request",
             extra={

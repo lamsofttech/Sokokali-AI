@@ -94,13 +94,16 @@ describe("useLiveFeed", () => {
         data: {
           state: broadcastState,
           gamification,
-          recent: [{ type: "say", at: "2026-10-26T08:00:00Z", data: { source: "trivia", text: "old", speech: null } }],
+          recent: [
+            { type: "say", at: "2026-10-26T07:59:00Z", data: { source: "poll", text: "older", speech: null } },
+            { type: "say", at: "2026-10-26T08:00:00Z", data: { source: "trivia", text: "old", speech: null } },
+          ],
         },
       });
     });
     expect(result.current.connected).toBe(true);
     expect(result.current.state?.replies).toBe(7);
-    expect(result.current.feed).toHaveLength(1);
+    expect(result.current.feed.map((f) => f.say?.text)).toEqual(["old", "older"]); // newest first
     expect(onSay).not.toHaveBeenCalled();
 
     act(() => socket.send({ type: "say", at: "2026-10-26T08:01:00Z", data: { source: "viewer", text: "new", speech: null } }));

@@ -1,11 +1,14 @@
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import JSONResponse
+from redis.exceptions import RedisError
 
 from app.api.deps import get_container
 from app.core.container import Container
+from app.core.security import require_admin
+from app.database.storage import Storage
 from app.schemas.system import ComponentStatus, HealthResponse, ReadinessResponse, StatusResponse
 
 router = APIRouter(tags=["system"])
@@ -39,6 +42,13 @@ async def health(container: ContainerDep) -> HealthResponse:
 @router.get("/ready", response_model=ReadinessResponse, summary="Readiness probe")
 async def ready(container: ContainerDep) -> JSONResponse:
     checks = {"sports_provider": await container.sports_provider.health_check()}
+    if container.storage is not None:
+        checks["database"] = await container.storage.healthy()
+    if container.redis is not None:
+        try:
+            checks["redis"] = bool(await container.redis.ping())
+        except (RedisError, OSError):
+            checks["redis"] = False
     if container.settings.forex_enabled:
         checks["forex_provider"] = await container.forex_provider.health_check()
     ok = all(checks.values())
@@ -89,9 +99,72 @@ async def service_status(container: ContainerDep) -> StatusResponse:
                 + (f"; {container.broadcast.source_error}" if container.broadcast.source_error else ""),
             ),
             ComponentStatus(
+                name="database",
+                status="ok" if container.storage is not None else "disabled",
+                detail="PostgreSQL: predictions, broadcast log and engagement are saved"
+                if container.storage is not None
+                else "not configured: nothing is saved across restarts",
+            ),
+            ComponentStatus(
+                name="redis",
+                status="ok" if container.redis is not None else "disabled",
+                detail="shared rate limits" if container.redis is not None else "not configured: in-memory rate limits",
+            ),
+            ComponentStatus(
                 name="conversation_memory",
                 status="ok",
                 detail=f"in-memory, {len(container.memory)} active conversations",
             ),
         ],
     )
+
+
+@router.get("/metrics", summary="Prometheus metrics (admin outside development)", dependencies=[Depends(require_admin)])
+async def metrics(container: ContainerDep) -> Response:
+    m = container.metrics
+    m.live_queue.set(len(container.broadcast.pipeline))
+    m.ws_clients.set(container.hub.client_count)
+    m.broadcast_running.set(1 if container.broadcast.state.value == "running" else 0)
+    m.broadcast_errors.set(container.broadcast.errors)
+    return Response(m.render(), media_type="text/plain; version=0.0.4; charset=utf-8")
+
+
+_PREDICTION_FIELDS = (
+    "match_id", "home_team", "away_team", "kickoff", "predicted_at", "data_as_of",
+    "data_source", "is_simulated", "home_win", "draw", "away_win", "model_version",
+)
+
+
+def _storage(container: Container) -> Storage:
+    if container.storage is None:
+        raise HTTPException(503, "No database configured (set SOKOKALI_DATABASE_URL)")
+    return container.storage
+
+
+@router.get(
+    "/api/v1/history/predictions",
+    summary="Stored predictions, newest first (admin)",
+    dependencies=[Depends(require_admin)],
+)
+async def prediction_history(
+    container: ContainerDep, limit: Annotated[int, Query(ge=1, le=500)] = 50
+) -> list[dict[str, object]]:
+    rows = await _storage(container).recent_predictions(limit)
+    return [
+        {c: getattr(r, c) for c in _PREDICTION_FIELDS}
+        for r in rows
+    ]
+
+
+@router.get(
+    "/api/v1/history/broadcast",
+    summary="What Sokokali said on air, newest first (admin)",
+    dependencies=[Depends(require_admin)],
+)
+async def broadcast_history(
+    container: ContainerDep, limit: Annotated[int, Query(ge=1, le=500)] = 50
+) -> list[dict[str, object]]:
+    rows = await _storage(container).recent_broadcast(limit)
+    return [
+        {c: getattr(r, c) for c in ("at", "source", "viewer_name", "comment", "reply", "engine")} for r in rows
+    ]

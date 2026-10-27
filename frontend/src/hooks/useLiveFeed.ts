@@ -68,8 +68,8 @@ export function useLiveFeed(token: string, handlers: Handlers = {}): LiveFeed & 
         case "snapshot":
           setState(message.data.state);
           setGamification(message.data.gamification);
-          // Show recent history without replaying its speech.
-          [...message.data.recent].reverse().forEach((m) => handle(m, false));
+          // Replay recent history (oldest first, so the newest ends on top) without speaking it again.
+          message.data.recent.forEach((m) => handle(m, false));
           break;
         case "state":
           setState(message.data);

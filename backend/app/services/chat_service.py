@@ -8,7 +8,7 @@ import time
 from collections.abc import Callable, Hashable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Any, Literal
 
 from app.integrations.forex.base import ForexDataError
 from app.integrations.sports.base import SportsDataError
@@ -73,6 +73,7 @@ class ChatService:
         self.forex_enabled = forex_enabled
         self.llm = llm
         self.llm_history_turns = llm_history_turns
+        self.metrics: Any = None  # app.core.metrics.Metrics, set by the container
 
     async def handle(self, request: ChatRequest) -> ChatResponse:
         viewer_id = request.viewer_id or ANONYMOUS_VIEWER
@@ -110,6 +111,8 @@ class ChatService:
                 Turn(request.message, reply, draft.intent, tuple(t.team_id for t in draft.teams), time.monotonic()),
             )
 
+        if self.metrics is not None:
+            self.metrics.chat_replies.labels(draft.engine, draft.intent.value).inc()
         return ChatResponse(
             reply=reply,
             language=language,

@@ -17,10 +17,12 @@ walk-forward log loss, Brier score and calibration are measured in
 
 import asyncio
 import math
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from app.core.background import spawn
 from app.integrations.sports.base import SportsDataProvider
 from app.schemas.sports import (
     ExpectedGoals,
@@ -227,6 +229,8 @@ class PredictionEngine:
         # Fitted models and backtests are reused until the provider's data changes (keys include data_as_of).
         self._models: dict[tuple[str, datetime, int], FittedModel] = {}
         self._evaluations: dict[tuple[datetime, int, int], "BacktestReport"] = {}
+        # Called (in the background) with every prediction, e.g. to store it with its model version.
+        self.on_prediction: Callable[[Prediction], Awaitable[None]] | None = None
 
     async def evaluate(self, warmup_matches: int = 20, refit_every: int = 1) -> "BacktestReport":
         """Walk-forward backtest over all finished matches the provider has."""
@@ -282,7 +286,7 @@ class PredictionEngine:
         if self.provider.is_simulated:
             key_factors.append("All inputs are SIMULATED data, not real match statistics")
 
-        return Prediction(
+        prediction = Prediction(
             match_id=fixture.match_id,
             competition=fixture.competition,
             home_team=home_name,
@@ -295,3 +299,6 @@ class PredictionEngine:
             model_version=self.model_version,
             key_factors=key_factors,
         )
+        if self.on_prediction is not None:
+            spawn(self.on_prediction(prediction), "save_prediction")
+        return prediction

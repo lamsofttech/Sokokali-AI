@@ -115,4 +115,24 @@ Known limitations:
 - The backend estimates speaking time from word count; the browser's actual voice may be faster or slower.
 - No real platform connector: TikTok needs authorized access; YouTube/Twitch official APIs are possible future connectors.
 
-## Next: Phase 7, cloud deployment (not started; needs approval)
+## Phase 7: Deployment (local Docker; Google Cloud planned) (complete, awaiting approval)
+
+Done:
+- PostgreSQL persistence (SQLAlchemy 2.0 async): prediction history (deduplicated, with model version and data date), broadcast log of everything said on air, and an engagement snapshot restored on startup. Writes run in the background and never break the show. Startup retries while the database boots, then falls back to memory.
+- Redis-backed sliding-window rate limit shared across restarts/replicas, falling back to in-memory if Redis is down.
+- Prometheus `/metrics` (HTTP by route, chat replies by engine/intent, live events, queue, WebSocket clients, broadcast state/errors). `/ready` checks the database and Redis. Status shows database/redis components. Admin history endpoints.
+- Dockerfiles (non-root backend with health check and graceful shutdown; nginx-unprivileged dashboard with an API/WebSocket proxy and security headers incl. CSP), and `docker-compose.yml` with PostgreSQL 17 and Redis 7, health-gated startup, restart policies, volumes, localhost-only ports.
+- GitHub Actions CI: backend tests + pip-audit, frontend typecheck/tests/build + npm audit, Docker build and a smoke test of the running stack.
+- `docs/deployment.md`: local operations, monitoring, storage, Google Cloud mapping (Cloud Run single instance, Cloud SQL, Memorystore, Secret Manager, Cloud Build).
+- 8 new backend tests (146 total, stable over repeated runs); frontend still 40 (one live-feed ordering bug fixed and covered).
+- Verified locally: all four containers healthy; through nginx: readiness (database and redis true), chat, a broadcast over the WebSocket, stored history, metrics and CSP headers. The 3D dashboard renders under the CSP, and engagement state was restored after `docker compose restart backend`. The stack ran healthy for 8+ hours. pip-audit and npm audit: no known vulnerabilities.
+
+Not yet verified:
+- The CI workflow itself runs on GitHub after the push (it was not executed locally as a workflow).
+- Google Cloud deployment (planned, not done).
+
+Known limitations:
+- Schema changes need Alembic migrations before real data accumulates (tables are only created, never altered).
+- One backend instance by design (the broadcast state is in-process).
+
+## Next: Google Cloud deployment, real platform connector (needs decisions)

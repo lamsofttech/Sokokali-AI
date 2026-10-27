@@ -314,6 +314,31 @@ class GamificationEngine:
             updates.append(u)
         return updates
 
+    # -- persistence ----------------------------------------------------------
+
+    def export_state(self) -> dict[str, Any]:
+        """Long-lived state worth keeping across restarts (open trivia rounds and polls are not)."""
+        return {
+            "totals": dict(self.totals),
+            "viewers": sorted(self._viewers),
+            "names": dict(self._names),
+            "points": dict(self.points),
+            "reached": sorted(self.reached),
+            "outfit": self.outfit,
+            "background": self.background,
+            "last_poll_result": self.last_poll_result,
+        }
+
+    def import_state(self, state: dict[str, Any]) -> None:
+        self.totals = Counter({k: int(v) for k, v in state.get("totals", {}).items()})
+        self._viewers = set(state.get("viewers", []))
+        self._names = dict(state.get("names", {}))
+        self.points = Counter({k: int(v) for k, v in state.get("points", {}).items()})
+        self.reached = set(state.get("reached", []))
+        self.outfit = str(state.get("outfit", "home"))
+        self.background = str(state.get("background", "studio"))
+        self.last_poll_result = state.get("last_poll_result")
+
     # -- status ---------------------------------------------------------------
 
     def status(self) -> GamificationStatus:
