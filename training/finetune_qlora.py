@@ -94,6 +94,12 @@ def train(args: argparse.Namespace) -> None:
 
     tokenizer = AutoTokenizer.from_pretrained(args.base_model)
     train_pairs, skipped = build_pairs(tokenizer, load_rows(args.train))
+    if args.max_train_pairs:
+        train_pairs = train_pairs[: args.max_train_pairs]  # quick trial runs on small/free GPUs
+    # Older GPUs (e.g. Colab's free T4) have no bfloat16: fall back to float16.
+    bf16 = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+    dtype = torch.bfloat16 if bf16 else torch.float16
+    print(f"GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none'}; precision: {dtype}")
     eval_pairs, _ = build_pairs(tokenizer, load_rows(args.eval)) if args.eval else ([], 0)
     print(f"training pairs: {len(train_pairs)} (skipped {skipped}); eval pairs: {len(eval_pairs)}")
 
@@ -102,10 +108,10 @@ def train(args: argparse.Namespace) -> None:
         quantization_config=BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_compute_dtype=dtype,
             bnb_4bit_use_double_quant=True,
         ),
-        torch_dtype=torch.bfloat16,
+        torch_dtype=dtype,
         device_map="auto",
     )
     config = SFTConfig(
@@ -118,8 +124,11 @@ def train(args: argparse.Namespace) -> None:
         warmup_ratio=0.03,
         logging_steps=10,
         eval_strategy="epoch" if eval_pairs else "no",
-        save_strategy="epoch",
-        bf16=True,
+        save_strategy="steps",
+        save_steps=args.save_steps,
+        save_total_limit=2,
+        bf16=bf16,
+        fp16=not bf16,
         gradient_checkpointing=True,
         max_length=args.max_length,
         completion_only_loss=True,  # learn the assistant turns only
@@ -140,7 +149,8 @@ def train(args: argparse.Namespace) -> None:
             task_type="CAUSAL_LM",
         ),
     )
-    trainer.train()
+    resume = args.resume and any(Path(args.output).glob("checkpoint-*"))
+    trainer.train(resume_from_checkpoint=True if resume else None)
     trainer.save_model(args.output)
     tokenizer.save_pretrained(args.output)
     if eval_pairs:
@@ -165,6 +175,9 @@ def main() -> None:
     p.add_argument("--lora-r", type=int, default=16)
     p.add_argument("--max-length", type=int, default=4096)
     p.add_argument("--seed", type=int, default=7)
+    p.add_argument("--save-steps", type=int, default=100, help="checkpoint every N steps (survives disconnects)")
+    p.add_argument("--resume", action="store_true", help="continue from the latest checkpoint in --output")
+    p.add_argument("--max-train-pairs", type=int, default=0, help="use only the first N pairs (quick trial runs)")
     p.add_argument("--dry-run", action="store_true", help="only check data formatting with the chat template")
     p.add_argument("--dry-run-rows", type=int, default=200)
     args = p.parse_args()

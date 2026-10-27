@@ -47,6 +47,13 @@ training\.venv\Scripts\python.exe -c "from huggingface_hub import HfApi; api=HfA
 
 Keep repos **private**. The dataset is built from football-data.co.uk data. Check their terms before any commercial use or public release.
 
+## Already set up on Hugging Face (account `nyakslamo`, all private)
+
+- Dataset: https://huggingface.co/datasets/nyakslamo/sokokali-training
+- Model repo: https://huggingface.co/nyakslamo/sokokali-qwen3-8b (filled by the first training run)
+- **Easiest way to train:** open [`training/sokokali_colab.ipynb`](sokokali_colab.ipynb) in Google Colab (File → Open notebook → GitHub → `lamsofttech/Sokokali-AI`) and run the cells. The free T4 trains `Qwen3-4B`; Colab Pro (L4/A100) trains `Qwen3-8B`. Checkpoints go to Google Drive, so a disconnect does not lose progress.
+- A trainer **Space** (`training/space/`) is ready, but Hugging Face requires a **PRO** subscription to host it (plus billing for the GPU). Once subscribed, it can be published with one command.
+
 ## 3. Train on a GPU
 
 You need one NVIDIA GPU with about 24 GB of memory. This computer has none, which is normal. Options:
