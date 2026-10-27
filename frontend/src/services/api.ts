@@ -2,7 +2,10 @@
 // subscribers, which is how the dashboard shows API latency and the error log.
 
 import type {
+  Audience,
   BacktestReport,
+  RelayRequest,
+  RelayResult,
   BroadcastStatus,
   GamificationStatus,
   Segment,
@@ -114,8 +117,16 @@ export class SokokaliApi {
   modelEvaluation = () => this.request<BacktestReport>("GET", "/api/v1/models/evaluation", undefined, 30_000);
   forexSignals = () => this.request<ForexSignalList>("GET", "/api/v1/forex/signals");
   broadcastStatus = () => this.request<BroadcastStatus>("GET", "/api/v1/broadcast/status");
-  broadcast = (action: "start" | "pause" | "stop") =>
-    this.request<BroadcastStatus>("POST", `/api/v1/broadcast/${action}`, undefined, DEFAULT_TIMEOUT_MS, true);
+  broadcast = (action: "start" | "pause" | "stop", audience?: Audience) =>
+    this.request<BroadcastStatus>(
+      "POST",
+      `/api/v1/broadcast/${action}${action === "start" && audience ? `?audience=${audience}` : ""}`,
+      undefined,
+      DEFAULT_TIMEOUT_MS,
+      true,
+    );
+  relay = (event: RelayRequest) =>
+    this.request<RelayResult>("POST", "/api/v1/live/relay", event, DEFAULT_TIMEOUT_MS, true);
   runSegment = (segment: Segment) =>
     this.request<{ started: string }>("POST", `/api/v1/broadcast/segments/${segment}`, undefined, 60_000, true);
   gamification = () => this.request<GamificationStatus>("GET", "/api/v1/gamification/status");

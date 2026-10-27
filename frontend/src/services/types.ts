@@ -161,9 +161,28 @@ export interface BacktestReport {
 
 export type BroadcastState = "stopped" | "running" | "paused";
 
+/** simulated = fake viewers; relay = real TikTok comments typed in by a moderator; tiktok = needs authorized API */
+export type Audience = "simulated" | "relay" | "tiktok";
+
+export interface RelayRequest {
+  viewer_name: string;
+  kind?: "comment" | "join" | "like" | "gift" | "follow" | "share";
+  text?: string;
+  gift_name?: string;
+  count?: number;
+}
+
+export interface RelayResult {
+  event_id?: string;
+  accepted: boolean;
+  reason: string | null;
+  priority?: number | null;
+}
+
 export interface BroadcastStatus {
   state: BroadcastState;
   source: string;
+  audience: Audience;
   source_is_simulated: boolean;
   source_error: string | null;
   started_at: string | null;

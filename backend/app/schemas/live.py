@@ -48,6 +48,7 @@ class IngestResult(BaseModel):
 class BroadcastStatus(BaseModel):
     state: BroadcastState
     source: str
+    audience: str = Field(description="simulated, relay (moderator-typed real comments) or tiktok")
     source_is_simulated: bool
     source_error: str | None
     started_at: datetime | None
@@ -61,3 +62,13 @@ class BroadcastStatus(BaseModel):
     last_error: str | None
     speaking_until: datetime | None
     connected_clients: int
+
+
+class RelayEvent(BaseModel):
+    """A real viewer action, typed in by a moderator watching the TikTok LIVE."""
+
+    viewer_name: str = Field(min_length=1, max_length=50, examples=["wanjiku_254"])
+    kind: LiveEventKind = LiveEventKind.COMMENT
+    text: str | None = Field(default=None, max_length=500, examples=["Arsenal vs Chelsea nani atashinda?"])
+    gift_name: str | None = Field(default=None, max_length=50)
+    count: int = Field(default=1, ge=1, le=10_000)

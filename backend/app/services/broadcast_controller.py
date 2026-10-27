@@ -95,13 +95,27 @@ class BroadcastController:
         self.on_say: Callable[[dict[str, Any]], Awaitable[None]] | None = None
         self.on_gamification_state: Callable[[dict[str, Any]], Awaitable[None]] | None = None
         self.on_event: Callable[[LiveEvent], None] | None = None
+        # Which audience feeds the show ("simulated", "relay", "tiktok"); switchable while stopped.
+        self.audience = "simulated"
+        self.source_factory: Callable[[str], LiveEventSource] | None = None
         self.snapshot_seconds = 30.0
         self._last_snapshot = 0.0
 
     # -- control ---------------------------------------------------------------
 
-    async def start(self) -> BroadcastStatus:
-        """Start (or resume) the show. Raises LiveSourceUnavailableError if the source cannot run."""
+    async def start(self, audience: str | None = None) -> BroadcastStatus:
+        """Start (or resume) the show, optionally choosing the audience first.
+
+        Raises LiveSourceUnavailableError if the source cannot run, ValueError if the audience is
+        changed while the show is on.
+        """
+        if audience is not None and audience != self.audience:
+            if self.state != BroadcastState.STOPPED:
+                raise ValueError("Stop the broadcast before switching the audience")
+            if self.source_factory is None:
+                raise ValueError("This broadcast cannot switch audience")
+            self.source = self.source_factory(audience)
+            self.audience = audience
         if self.state == BroadcastState.PAUSED:
             self.state = BroadcastState.RUNNING
             self._publish_state()
@@ -165,6 +179,7 @@ class BroadcastController:
         return BroadcastStatus(
             state=self.state,
             source=self.source.name,
+            audience=self.audience,
             source_is_simulated=self.source.is_simulated,
             source_error=self.source_error,
             started_at=self.started_at,

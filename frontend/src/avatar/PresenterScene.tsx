@@ -279,11 +279,30 @@ interface SceneProps {
   lipSync: LipSync;
   outfit?: string;
   background?: string;
+  /** Tall 9:16 framing for portrait TikTok LIVE. */
+  portrait?: boolean;
 }
 
-export default function PresenterScene({ animation, lipSync, outfit = "home", background = "studio" }: SceneProps) {
+export default function PresenterScene({
+  animation,
+  lipSync,
+  outfit = "home",
+  background = "studio",
+  portrait = false,
+}: SceneProps) {
+  // Portrait windows are narrow, so the camera steps back and widens to keep the shoulders and desk in frame.
+  const camera = portrait
+    ? { position: [0, 1.5, 3.4] as [number, number, number], fov: 46 }
+    : { position: [0, 1.56, 2.3] as [number, number, number], fov: 30 };
   return (
-    <Canvas shadows dpr={[1, 2]} camera={{ position: [0, 1.56, 2.3], fov: 30 }} onCreated={({ camera }) => camera.lookAt(0, 1.45, 0)}>
+    <Canvas
+      key={portrait ? "portrait" : "landscape"}
+      shadows
+      dpr={[1, 2]}
+      style={{ width: "100%", height: "100%" }}
+      camera={camera}
+      onCreated={({ camera: cam }) => cam.lookAt(0, portrait ? 1.3 : 1.45, 0)}
+    >
       <Studio background={background} />
       <Presenter animation={animation} lipSync={lipSync} outfit={outfit} />
     </Canvas>

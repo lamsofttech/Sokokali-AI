@@ -9,10 +9,12 @@ import { jsonResponse } from "../test/fixtures";
 import { BroadcastPanel } from "./BroadcastPanel";
 import { GamificationPanel } from "./GamificationPanel";
 import { LiveFeedPanel } from "./LiveFeedPanel";
+import { RelayPanel, parseBulk } from "./RelayPanel";
 
 const broadcastState: BroadcastStatus = {
   state: "running",
   source: "simulated",
+  audience: "simulated",
   source_is_simulated: true,
   source_error: null,
   started_at: "2026-10-26T08:00:00Z",
@@ -198,5 +200,58 @@ describe("GamificationPanel", () => {
     expect(screen.getByRole("progressbar", { name: "500 likes: away jersey" })).toHaveAttribute("aria-valuenow", "140");
     expect(screen.getByText("11 pts")).toBeInTheDocument();
     expect(screen.getByText(/Gifts are cosmetic only/)).toBeInTheDocument();
+  });
+});
+
+describe("RelayPanel", () => {
+  it("parses pasted 'username: comment' lines", () => {
+    expect(parseBulk("@wanjiku_254: Arsenal vs Chelsea?\nno colon here\n brian : EUR/USD leo?\n:empty name\n")).toEqual([
+      { viewer_name: "wanjiku_254", text: "Arsenal vs Chelsea?", kind: "comment" },
+      { viewer_name: "brian", text: "EUR/USD leo?", kind: "comment" },
+    ]);
+  });
+
+  it("relays a comment with the admin token and shows the result", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ event_id: "relay-1", accepted: true, reason: null, priority: 50 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new SokokaliApi();
+    client.adminToken = "tok";
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<RelayPanel client={client} active />);
+
+    await user.type(screen.getByLabelText("TikTok username"), "@Wanjiku_254");
+    await user.type(screen.getByLabelText("Comment"), "Arsenal vs Chelsea nani atashinda?{Enter}");
+
+    expect(await screen.findByText("queued · priority 50")).toBeInTheDocument();
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/live/relay");
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer tok");
+    expect(JSON.parse(init.body as string)).toEqual({
+      viewer_name: "Wanjiku_254",
+      kind: "comment",
+      text: "Arsenal vs Chelsea nani atashinda?",
+    });
+    expect(screen.getByLabelText("Comment")).toHaveValue(""); // ready for the next one
+  });
+
+  it("asks for a username and warns when the relay audience is off", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<RelayPanel client={new SokokaliApi()} active={false} />);
+    await user.click(screen.getByRole("button", { name: "Relay" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Enter the TikTok username.");
+    expect(screen.getByText("Choose the relay audience")).toBeInTheDocument();
+  });
+});
+
+describe("BroadcastPanel audience", () => {
+  it("starts the show with the chosen audience", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ ...broadcastState, audience: "relay" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const stopped = { ...broadcastState, state: "stopped" as const };
+    render(<BroadcastPanel client={new SokokaliApi()} state={stopped} connected authError={false} token="" onTokenChange={vi.fn()} />);
+    await user.selectOptions(screen.getByLabelText("Audience"), "relay");
+    await user.click(screen.getByRole("button", { name: "Start" }));
+    expect((fetchMock.mock.calls[0] as [string])[0]).toBe("/api/v1/broadcast/start?audience=relay");
   });
 });

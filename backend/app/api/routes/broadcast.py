@@ -1,4 +1,6 @@
 import asyncio
+import hashlib
+import uuid
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
@@ -7,7 +9,7 @@ from app.api.deps import get_container
 from app.core.container import Container
 from app.core.security import require_admin, token_is_valid
 from app.integrations.live.base import LiveSourceUnavailableError
-from app.schemas.live import BroadcastStatus, LiveEvent
+from app.schemas.live import BroadcastStatus, LiveEvent, LiveEventKind, RelayEvent
 from app.services.gamification import GamificationStatus
 
 router = APIRouter(tags=["broadcast"])
@@ -28,10 +30,13 @@ async def broadcast_status(container: ContainerDep) -> BroadcastStatus:
     summary="Start or resume the live broadcast (admin)",
     responses={409: {"description": "The live source cannot run (e.g. TikTok not authorized)"}},
 )
-async def broadcast_start(container: ContainerDep) -> BroadcastStatus:
+async def broadcast_start(
+    container: ContainerDep,
+    audience: Literal["simulated", "relay", "tiktok"] | None = None,
+) -> BroadcastStatus:
     try:
-        return await container.broadcast.start()
-    except LiveSourceUnavailableError as exc:
+        return await container.broadcast.start(audience)
+    except (LiveSourceUnavailableError, ValueError) as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from None
 
 
@@ -65,6 +70,30 @@ async def broadcast_segment(
 )
 async def inject_event(container: ContainerDep, event: LiveEvent) -> dict[str, Any]:
     return await container.broadcast.handle_event(event)
+
+
+@router.post(
+    "/api/v1/live/relay",
+    dependencies=Admin,
+    summary="Relay a real viewer's comment, gift or join from TikTok, typed in by a moderator (admin)",
+)
+async def relay_event(container: ContainerDep, relay: RelayEvent) -> dict[str, Any]:
+    name = relay.viewer_name.strip().lstrip("@")
+    if relay.kind == LiveEventKind.COMMENT and not (relay.text or "").strip():
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "A comment needs text")
+    event = LiveEvent(
+        event_id=f"relay-{uuid.uuid4().hex}",
+        platform="tiktok",
+        # Opaque, stable per username, so rate limits, points and conversation memory work per viewer.
+        viewer_id="tt-" + hashlib.sha256(name.lower().encode()).hexdigest()[:16],
+        viewer_name=name[:50],
+        kind=relay.kind,
+        text=(relay.text or "").strip() or None,
+        gift_name=relay.gift_name,
+        count=relay.count,
+        is_simulated=False,
+    )
+    return {"event_id": event.event_id, **await container.broadcast.handle_event(event)}
 
 
 @router.get("/api/v1/gamification/status", response_model=GamificationStatus, summary="Milestones, trivia, polls")

@@ -5,6 +5,8 @@ import { AvatarPanel } from "../components/AvatarPanel";
 import { BroadcastPanel } from "../components/BroadcastPanel";
 import { GamificationPanel } from "../components/GamificationPanel";
 import { LiveFeedPanel } from "../components/LiveFeedPanel";
+import { RelayPanel } from "../components/RelayPanel";
+import { STAGE_CHANNEL } from "./StageView";
 
 import { ChatPanel } from "../components/ChatPanel";
 import { ComingNextPanel } from "../components/ComingNextPanel";
@@ -49,12 +51,29 @@ export function Dashboard({ client }: { client: SokokaliApi }) {
     }
   }, []);
 
+  // When a stage view (window captured for TikTok) is open, it does the talking; the dashboard stays quiet.
+  const stageSeenAt = useRef(0);
+  const [stageOpen, setStageOpen] = useState(false);
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return;
+    const channel = new BroadcastChannel(STAGE_CHANNEL);
+    channel.onmessage = () => {
+      stageSeenAt.current = Date.now();
+      setStageOpen(true);
+    };
+    const timer = setInterval(() => setStageOpen(Date.now() - stageSeenAt.current < 5000), 2500);
+    return () => {
+      clearInterval(timer);
+      channel.close();
+    };
+  }, []);
+
   const gamificationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const setGamificationRef = useRef<(g: GamificationStatus) => void>(() => undefined);
   const live = useLiveFeed(adminToken, {
     onSay: useCallback(
       (say: SayData) => {
-        if (say.speech) {
+        if (say.speech && Date.now() - stageSeenAt.current > 5000) {
           speak({
             text: say.speech.text,
             languages: say.speech.voice_languages,
@@ -139,12 +158,18 @@ export function Dashboard({ client }: { client: SokokaliApi }) {
             token={adminToken}
             onTokenChange={saveToken}
           />
+          <RelayPanel client={client} active={live.state?.audience === "relay"} />
           <LiveFeedPanel feed={live.feed} simulated={live.state?.source_is_simulated ?? false} />
           <ChatPanel client={client} onReply={onReply} />
           <FixturesPanel client={client} />
           <ModelPanel client={client} />
         </div>
         <div className="space-y-4">
+          {stageOpen && (
+            <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+              Stage view is open: it speaks the broadcast, so this dashboard stays quiet.
+            </p>
+          )}
           <AvatarPanel speech={speech} outfit={live.gamification?.outfit} background={live.gamification?.background} />
           <GamificationPanel status={live.gamification} />
           <StatusPanel status={status} events={events} />

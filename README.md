@@ -175,7 +175,9 @@ At the top of the dashboard, **Broadcast control** starts, pauses and stops a li
 
 **Admin token:** in development the controls work without one. Anywhere else, set `SOKOKALI_ADMIN_TOKEN` in `.env`. Admin endpoints refuse all requests until it is set, then require `Authorization: Bearer <token>`. Enter the same token in the dashboard's **Admin token** box. The live feed (WebSocket `/ws/live`) uses the same token.
 
-**TikTok:** `SOKOKALI_LIVE_SOURCE=tiktok` exists, but it refuses to start. TikTok has no public, officially authorized API for live comments, and this project does not use reverse-engineered workarounds. When authorized access exists, only `backend/app/integrations/live/tiktok.py` needs implementing; the rest of the pipeline is ready. Platform webhooks or tests can also push events through `POST /api/v1/live/events`.
+**Going live on TikTok today:** choose the audience **TikTok LIVE via moderator relay**. A moderator copies viewers' TikTok comments into the dashboard's **Moderator relay** panel (one at a time, or pasted as `username: comment` lines), and Sokokali answers them on air. Open the **Stage view** (`/?view=stage`, or `/?view=stage&layout=portrait` for phone viewers) and capture that window, with its audio, in TikTok LIVE Studio. Step-by-step guide: [docs/going-live-on-tiktok.md](docs/going-live-on-tiktok.md).
+
+**TikTok API:** `SOKOKALI_LIVE_SOURCE=tiktok` exists, but it refuses to start. TikTok has no public, officially authorized API for live comments, and this project does not use reverse-engineered workarounds. When authorized access exists, only `backend/app/integrations/live/tiktok.py` needs implementing; the rest of the pipeline is ready. Platform webhooks or tests can also push events through `POST /api/v1/live/events`.
 
 ### Avatar & voice
 
@@ -225,6 +227,7 @@ From the `backend` folder:
 | POST | `/api/v1/broadcast/start` · `/pause` · `/stop` | Control the live show (admin) |
 | POST | `/api/v1/broadcast/segments/{segment}` | Run trivia, poll, match_preview, forex or responsible_gambling now (admin) |
 | POST | `/api/v1/live/events` | Inject a live event, e.g. from a platform webhook (admin) |
+| POST | `/api/v1/live/relay` | Relay a real viewer's comment, gift, join or follow, typed in by a moderator (admin) |
 | GET | `/api/v1/gamification/status` | Milestones, trivia, poll, leaderboard, cosmetics |
 | WS | `/ws/live` | Live feed: events, replies, game updates, state (admin token as `?token=`) |
 | GET | `/api/v1/history/predictions` | Stored predictions with model versions (admin; needs a database) |

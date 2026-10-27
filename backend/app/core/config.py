@@ -86,7 +86,8 @@ class Settings(BaseSettings):
     admin_token: SecretStr | None = None
 
     # Livestream (Phase 6).
-    live_source: Literal["simulated", "tiktok"] = "simulated"
+    # simulated = fake audience; relay = real comments typed in by a moderator; tiktok = needs authorized API
+    live_source: Literal["simulated", "relay", "tiktok"] = "simulated"
     live_sim_events_per_second: float = Field(0.6, gt=0, le=20)
     live_max_queue: int = Field(50, ge=1, le=1000)
     live_dedup_ttl_seconds: float = Field(60, gt=0)

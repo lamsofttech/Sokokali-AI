@@ -402,3 +402,36 @@ def test_trivia_answers_are_not_queued_as_questions(live: tuple[Container, Clock
     pipeline = live[0].broadcast.pipeline
     result = asyncio.run(pipeline.ingest(ev(text="jibu ni B", viewer="t"), 0))
     assert result.reason == "game_answer" and len(pipeline) == 0
+
+
+# --- moderator relay (real TikTok comments typed in by a person) --------------------------
+
+
+def test_relay_audience_end_to_end(settings: Settings, provider: Any, forex_provider: Any) -> None:
+    container = build_container(settings, sports_provider=provider, forex_provider=forex_provider)
+    with TestClient(create_app(settings, container)) as client:
+        started = client.post("/api/v1/broadcast/start", params={"audience": "relay"}).json()
+        assert started["audience"] == "relay" and started["source"] == "tiktok-relay"
+        assert started["source_is_simulated"] is False
+
+        res = client.post("/api/v1/live/relay", json={"viewer_name": "@Wanjiku_254", "text": "Arsenal vs Chelsea nani atashinda?"})
+        body = res.json()
+        assert res.status_code == 200 and body["accepted"] is True and body["priority"] >= 40
+        again = client.post("/api/v1/live/relay", json={"viewer_name": "wanjiku_254", "text": "Arsenal vs Chelsea nani atashinda?"})
+        assert again.json()["reason"] == "repeated_comment"  # same viewer (case and @ ignored), same text
+
+        gift = client.post("/api/v1/live/relay", json={"viewer_name": "musa", "kind": "gift", "gift_name": "Rose"})
+        assert gift.status_code == 200
+        assert client.post("/api/v1/live/relay", json={"viewer_name": "x", "kind": "comment"}).status_code == 422
+
+        # Switching audience while on air is refused; after stopping it works.
+        assert client.post("/api/v1/broadcast/start", params={"audience": "simulated"}).status_code == 409
+        client.post("/api/v1/broadcast/stop")
+        assert client.post("/api/v1/broadcast/start", params={"audience": "simulated"}).json()["audience"] == "simulated"
+        client.post("/api/v1/broadcast/stop")
+        assert container.gamification.totals["gifts"] == 1
+
+
+def test_relay_needs_admin_token_when_configured(settings: Settings, provider: Any, forex_provider: Any) -> None:
+    with _app(settings, provider, forex_provider, admin_token=SecretStr("tok")) as client:
+        assert client.post("/api/v1/live/relay", json={"viewer_name": "a", "text": "hello there"}).status_code == 401

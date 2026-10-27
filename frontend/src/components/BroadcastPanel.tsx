@@ -1,11 +1,17 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { SokokaliApi } from "../services/api";
 import { duration, humanize } from "../services/format";
-import type { BroadcastStatus, Segment } from "../services/types";
+import type { Audience, BroadcastStatus, Segment } from "../services/types";
 import { ErrorNote, Panel, Pill, type Tone } from "./ui";
 
 const STATE_TONE: Record<BroadcastStatus["state"], Tone> = { running: "ok", paused: "warn", stopped: "neutral" };
+const AUDIENCES: { id: Audience; label: string }[] = [
+  { id: "simulated", label: "Simulated viewers (testing)" },
+  { id: "relay", label: "TikTok LIVE via moderator relay" },
+  { id: "tiktok", label: "TikTok API (not authorized yet)" },
+];
+
 const SEGMENTS: { id: Segment; label: string }[] = [
   { id: "trivia", label: "Trivia" },
   { id: "poll", label: "Fans' poll" },
@@ -27,6 +33,10 @@ export function BroadcastPanel({ client, state, connected, authError, token, onT
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tokenDraft, setTokenDraft] = useState(token);
+  const [audience, setAudience] = useState<Audience>(state?.audience ?? "simulated");
+  useEffect(() => {
+    if (state && state.state !== "stopped") setAudience(state.audience); // follow the running show
+  }, [state]);
 
   async function run(action: () => Promise<unknown>) {
     setBusy(true);
@@ -60,10 +70,27 @@ export function BroadcastPanel({ client, state, connected, authError, token, onT
       }
     >
       <div className="space-y-3 text-sm">
+        <label className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
+          Audience
+          <select
+            value={audience}
+            disabled={busy || (state !== null && state.state !== "stopped")}
+            onChange={(e) => setAudience(e.target.value as Audience)}
+            className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-100 disabled:opacity-60"
+          >
+            {AUDIENCES.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.label}
+              </option>
+            ))}
+          </select>
+          {state !== null && state.state !== "stopped" && <span>(stop the show to change)</span>}
+        </label>
+
         <div className="flex flex-wrap gap-2">
           <button
             disabled={busy || running}
-            onClick={() => void run(() => client.broadcast("start"))}
+            onClick={() => void run(() => client.broadcast("start", paused ? undefined : audience))}
             className="rounded-lg bg-emerald-600 px-3 py-1.5 font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
           >
             {paused ? "Resume" : "Start"}

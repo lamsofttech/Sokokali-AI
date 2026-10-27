@@ -135,4 +135,20 @@ Known limitations:
 - Schema changes need Alembic migrations before real data accumulates (tables are only created, never altered).
 - One backend instance by design (the broadcast state is in-process).
 
-## Next: Google Cloud deployment, real platform connector (needs decisions)
+## Going live on TikTok: moderator relay + stage view (complete)
+
+Chosen over reverse-engineering TikTok's private API (account risk; against the project's no-bypass rule).
+
+Done:
+- Audience choice per show (`simulated`, `relay`, `tiktok`), switchable while stopped (`POST /api/v1/broadcast/start?audience=relay`).
+- `POST /api/v1/live/relay` (admin): a moderator relays a real viewer's comment/gift/join/follow. It gets a stable hashed viewer ID per username and goes through the full pipeline.
+- Dashboard Moderator relay panel: single entry with Enter-to-send, bulk paste of `username: comment` lines, and a per-comment result (queued with priority, or the filter reason).
+- Stage view (`/?view=stage`, portrait `&layout=portrait`): full-window presenter with large captions for TikTok LIVE Studio capture, a click-to-enable-voice overlay, and automatic muting of dashboard tabs while a stage is open (no double audio).
+- Guide: docs/going-live-on-tiktok.md.
+- 2 new backend tests (148), 4 new frontend tests (44). Verified on the Docker stack: relay comment answered on air, gift thanked; stage view rendered in landscape and portrait.
+
+Not yet verified:
+- An actual TikTok LIVE Studio capture with audio (needs your TikTok account with LIVE access).
+- Headless screenshots show a black band because headless Edge reports a smaller viewport than it captures; this is not expected in a real window, but check the stage fills the window when you first open it.
+
+## Next: Google Cloud deployment, YouTube connector, realistic avatar (needs decisions)

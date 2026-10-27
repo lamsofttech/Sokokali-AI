@@ -39,6 +39,68 @@ function FallbackPresenter({ speaking }: { speaking: boolean }) {
   );
 }
 
+/** The presenter with its captions and banners. "full" fills the window (stage view for LIVE Studio capture). */
+export function PresenterStage({
+  speech,
+  outfit = "home",
+  background = "studio",
+  full = false,
+  portrait = false,
+}: {
+  speech: SpeechController;
+  outfit?: string;
+  background?: string;
+  full?: boolean;
+  portrait?: boolean;
+}) {
+  const hasWebgl = useMemo(webglAvailable, []);
+  const speaking = speech.state.status === "speaking";
+  const badge = full ? "px-3 py-1 text-lg" : "px-1.5 py-0.5 text-[10px]";
+  return (
+    <div
+      className={
+        full
+          ? "absolute inset-0 overflow-hidden bg-zinc-950"
+          : "relative aspect-video overflow-hidden rounded-lg bg-zinc-950 ring-1 ring-zinc-800"
+      }
+    >
+      {hasWebgl ? (
+        <SceneBoundary fallback={<FallbackPresenter speaking={speaking} />}>
+          <Suspense fallback={<p className="p-4 text-sm text-zinc-400">Loading presenter...</p>}>
+            <PresenterScene
+              animation={speech.animation}
+              lipSync={speech.lipSync}
+              outfit={outfit}
+              background={background}
+              portrait={portrait}
+            />
+          </Suspense>
+        </SceneBoundary>
+      ) : (
+        <FallbackPresenter speaking={speaking} />
+      )}
+      <div className={`pointer-events-none absolute flex gap-1.5 ${full ? "top-4 left-4" : "top-2 left-2"}`}>
+        <span className={`rounded bg-red-600 font-bold tracking-wider text-white ${badge}`}>SOKOKALI</span>
+        {speech.showSimulatedBanner && (
+          <span className={`rounded bg-amber-500/90 font-semibold text-zinc-950 ${badge}`}>SIMULATED DATA</span>
+        )}
+      </div>
+      {speech.caption && (
+        <p
+          aria-live="polite"
+          className={
+            full
+              ? `absolute inset-x-6 line-clamp-4 rounded-xl bg-black/75 px-5 py-3 text-center leading-snug font-medium text-white ${portrait ? "bottom-24 text-3xl" : "bottom-8 text-2xl"}`
+              : "absolute inset-x-2 bottom-2 line-clamp-3 rounded-md bg-black/70 px-3 py-1 text-center text-xs leading-snug text-white"
+          }
+        >
+          {speech.caption}
+        </p>
+      )}
+    </div>
+  );
+}
+
 const SAMPLE_LINES: Record<string, { text: string; languages: string[] }> = {
   en: { text: "Karibu! I'm Sokokali, your sports and markets presenter.", languages: ["en-KE", "en-GB", "en"] },
   sw: { text: "Karibu sana wadau! Mimi ni Sokokali, mtangazaji wenu wa michezo.", languages: ["sw-KE", "sw", "en-KE"] },
@@ -53,7 +115,6 @@ export function AvatarPanel({
   outfit?: string;
   background?: string;
 }) {
-  const hasWebgl = useMemo(webglAvailable, []);
   const { state, settings } = speech;
   const speaking = state.status === "speaking";
   const voices = useMemo(() => sortVoices(speech.voices), [speech.voices]);
@@ -74,38 +135,23 @@ export function AvatarPanel({
       title="Avatar & voice"
       subtitle="Live preview of Sokokali presenting"
       actions={
-        <Pill tone={speaking ? "ok" : "neutral"}>
+        <>
+          <a
+            href="?view=stage"
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-md border border-zinc-700 px-2 py-0.5 text-xs text-zinc-300 hover:border-emerald-500"
+            title="Full-screen presenter for TikTok LIVE Studio / OBS window capture"
+          >
+            Stage view ↗
+          </a>
+          <Pill tone={speaking ? "ok" : "neutral"}>
           {speaking ? `Speaking${state.queued ? ` · ${state.queued} queued` : ""}` : "Idle"}
-        </Pill>
+          </Pill>
+        </>
       }
     >
-      <div className="relative aspect-video overflow-hidden rounded-lg bg-zinc-950 ring-1 ring-zinc-800">
-        {hasWebgl ? (
-          <SceneBoundary fallback={<FallbackPresenter speaking={speaking} />}>
-            <Suspense fallback={<p className="p-4 text-sm text-zinc-400">Loading presenter...</p>}>
-              <PresenterScene animation={speech.animation} lipSync={speech.lipSync} outfit={outfit} background={background} />
-            </Suspense>
-          </SceneBoundary>
-        ) : (
-          <FallbackPresenter speaking={speaking} />
-        )}
-        <div className="pointer-events-none absolute top-2 left-2 flex gap-1.5">
-          <span className="rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-white">SOKOKALI</span>
-          {speech.showSimulatedBanner && (
-            <span className="rounded bg-amber-500/90 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-950">
-              SIMULATED DATA
-            </span>
-          )}
-        </div>
-        {speech.caption && (
-          <p
-            aria-live="polite"
-            className="absolute inset-x-2 bottom-2 line-clamp-3 rounded-md bg-black/70 px-3 py-1 text-center text-xs leading-snug text-white"
-          >
-            {speech.caption}
-          </p>
-        )}
-      </div>
+      <PresenterStage speech={speech} outfit={outfit} background={background} />
 
       <div className="mt-3 space-y-2 text-xs text-zinc-300">
         <div className="flex flex-wrap items-center gap-2">

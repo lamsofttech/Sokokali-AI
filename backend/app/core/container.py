@@ -17,6 +17,7 @@ from app.database.storage import Storage
 from app.integrations.forex.base import ForexDataProvider
 from app.integrations.forex.simulated import SimulatedForexProvider
 from app.integrations.live.base import LiveEventSource
+from app.integrations.live.relay import ModeratorRelaySource
 from app.integrations.live.simulated import SimulatedLiveSource, Topics
 from app.integrations.live.tiktok import TikTokLiveSource
 from app.integrations.sports.base import SportsDataError, SportsDataProvider
@@ -136,9 +137,16 @@ def build_llm_client(settings: Settings) -> Any | None:
         return None
 
 
-def build_live_source(settings: Settings, sports: SportsService, forex_provider: ForexDataProvider) -> LiveEventSource:
-    if settings.live_source == "tiktok":
+def build_live_source(
+    settings: Settings, sports: SportsService, forex_provider: ForexDataProvider, audience: str | None = None
+) -> LiveEventSource:
+    audience = audience or settings.live_source
+    if audience == "tiktok":
         return TikTokLiveSource()
+    if audience == "relay":
+        return ModeratorRelaySource()
+    if audience != "simulated":
+        raise ValueError(f"Unknown audience {audience}")
 
     async def topics() -> Topics:
         try:
@@ -230,6 +238,8 @@ def build_container(
     )
     metrics = Metrics()
     chat.metrics = metrics
+    broadcast.audience = settings.live_source if live_source is None else "custom"
+    broadcast.source_factory = lambda audience: build_live_source(settings, sports, fx_provider, audience)
     broadcast.snapshot_seconds = settings.gamification_snapshot_seconds
     broadcast.on_event = lambda event: metrics.live_events.labels(event.kind.value).inc()
 
